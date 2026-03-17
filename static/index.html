@@ -317,6 +317,79 @@
     .send-btn:hover { background: var(--accent-hover); }
     .send-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+    /* ---- Constraints ---- */
+    .constraints-toggle {
+      max-width: 780px;
+      margin: 0 auto 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .constraints-toggle button {
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 12px;
+      font-family: inherit;
+      padding: 5px 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .constraints-toggle button:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+    .constraints-toggle button.active { border-color: #f59e0b; color: #f59e0b; }
+    .constraints-toggle .indicator {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: #f59e0b;
+      display: none;
+    }
+    .constraints-toggle button.active .indicator { display: inline-block; }
+
+    .constraints-panel {
+      max-width: 780px;
+      margin: 0 auto 10px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px 16px;
+      display: none;
+      animation: fadeIn 0.2s ease;
+    }
+    .constraints-panel.open { display: block; }
+    .constraints-panel .c-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+    .constraints-panel .c-row:last-child { margin-bottom: 0; }
+    .constraints-panel .c-label {
+      min-width: 140px;
+      font-size: 12px;
+      color: #f59e0b;
+      padding-top: 7px;
+      font-weight: 500;
+    }
+    .constraints-panel .c-input {
+      flex: 1;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 7px 10px;
+      color: var(--text-primary);
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      resize: none;
+      min-height: 32px;
+    }
+    .constraints-panel .c-input:focus { border-color: var(--accent); }
+    .constraints-panel .c-input::placeholder { color: var(--text-secondary); }
+
     /* ---- Mobile ---- */
     @media (max-width: 768px) {
       .sidebar {
@@ -346,7 +419,6 @@
       <h1><span>⚡</span> AI Chat Hub</h1>
     </div>
     <button class="new-chat-btn" id="newChatBtn">+ Новый чат</button>
-    <a href="/compare" style="display:block;margin:8px 16px 0;padding:10px 16px;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border);border-radius:var(--radius);font-size:13px;text-decoration:none;text-align:center;transition:background 0.2s;" onmouseover="this.style.background='var(--bg-hover)'" onmouseout="this.style.background='var(--bg-tertiary)'">⚖️ Сравнение ответов</a>
     <div class="chats-list" id="chatsList"></div>
   </aside>
 
@@ -368,6 +440,23 @@
     </div>
 
     <div class="input-area">
+      <div class="constraints-toggle">
+        <button id="constraintsBtn"><span class="indicator"></span>Ограничения</button>
+      </div>
+      <div class="constraints-panel" id="constraintsPanel">
+        <div class="c-row">
+          <div class="c-label">Формат ответа</div>
+          <textarea class="c-input" id="cFormat" rows="1" placeholder="Например: отвечай буллет-листом, макс. 3 пункта"></textarea>
+        </div>
+        <div class="c-row">
+          <div class="c-label">Лимит длины</div>
+          <textarea class="c-input" id="cLength" rows="1" placeholder="Например: уложись в 100 слов"></textarea>
+        </div>
+        <div class="c-row">
+          <div class="c-label">Стоп-условие</div>
+          <textarea class="c-input" id="cStop" rows="1" placeholder='Например: закончи ответ строкой "---END---"'></textarea>
+        </div>
+      </div>
       <div class="input-wrapper">
         <textarea id="userInput" placeholder="Напишите сообщение..." rows="1"></textarea>
         <button class="send-btn" id="sendBtn" title="Отправить">➤</button>
@@ -547,6 +636,29 @@ function escapeHtml(s) {
   return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ---- Constraints ----
+const constraintsBtn = $('#constraintsBtn');
+const constraintsPanel = $('#constraintsPanel');
+const cFormat = $('#cFormat');
+const cLength = $('#cLength');
+const cStop = $('#cStop');
+
+constraintsBtn.addEventListener('click', () => {
+  constraintsPanel.classList.toggle('open');
+  updateConstraintIndicator();
+});
+
+function getSystemPrompt() {
+  const parts = [cFormat.value.trim(), cLength.value.trim(), cStop.value.trim()].filter(Boolean);
+  return parts.join('\n');
+}
+
+function updateConstraintIndicator() {
+  const hasConstraints = getSystemPrompt().length > 0;
+  constraintsBtn.classList.toggle('active', hasConstraints);
+}
+[cFormat, cLength, cStop].forEach(el => el.addEventListener('input', updateConstraintIndicator));
+
 // ---- Send ----
 async function send() {
   const text = userInput.value.trim();
@@ -570,6 +682,13 @@ async function send() {
   const contentEl = appendMsg('assistant');
   contentEl.classList.add('typing-indicator');
 
+  const systemPrompt = getSystemPrompt();
+  const apiMessages = [];
+  if (systemPrompt) {
+    apiMessages.push({ role: 'system', content: systemPrompt });
+  }
+  apiMessages.push(...chat.messages);
+
   let full = '';
   try {
     const resp = await fetch('/api/chat', {
@@ -578,7 +697,7 @@ async function send() {
       body: JSON.stringify({
         provider: chat.provider,
         model: chat.model,
-        messages: chat.messages,
+        messages: apiMessages,
       }),
     });
     const reader = resp.body.getReader();

@@ -75,10 +75,6 @@ async def index():
     return (STATIC_DIR / "index.html").read_text(encoding="utf-8")
 
 
-@app.get("/compare", response_class=HTMLResponse)
-async def compare():
-    return (STATIC_DIR / "compare.html").read_text(encoding="utf-8")
-
 
 if STATIC_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
