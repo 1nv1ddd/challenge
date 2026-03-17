@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Сравнение ответов — AI Chat Hub</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.1/marked.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #0f0f0f;
+      --bg2: #1a1a1a;
+      --bg3: #252525;
+      --border: #333;
+      --text: #e8e8e8;
+      --text2: #999;
+      --accent: #7c5cfc;
+      --accent-hover: #6a4ae0;
+      --green: #22c55e;
+      --red: #ef4444;
+      --orange: #f59e0b;
+      --radius: 12px;
+    }
+    body {
+      font-family: 'Inter', -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* Header */
+    .header {
+      border-bottom: 1px solid var(--border);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .header h1 { font-size: 18px; font-weight: 600; }
+    .header a {
+      color: var(--accent);
+      text-decoration: none;
+      font-size: 14px;
+    }
+    .header a:hover { text-decoration: underline; }
+
+    /* Container */
+    .container { max-width: 1200px; margin: 0 auto; padding: 24px; }
+
+    /* Prompt section */
+    .prompt-section {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      margin-bottom: 24px;
+    }
+    .prompt-section h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 16px;
+    }
+    .model-row {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .model-row label { font-size: 13px; color: var(--text2); }
+    .model-row select {
+      background: var(--bg3);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      outline: none;
+    }
+    .model-row select:focus { border-color: var(--accent); }
+
+    .prompt-input {
+      width: 100%;
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 16px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 14px;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      line-height: 1.5;
+      margin-bottom: 16px;
+    }
+    .prompt-input:focus { border-color: var(--accent); }
+
+    /* Constraints editor */
+    .constraints-box {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .constraints-box h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      color: var(--orange);
+    }
+    .constraint-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    .constraint-row:last-child { margin-bottom: 0; }
+    .constraint-label {
+      min-width: 180px;
+      font-size: 13px;
+      color: var(--text2);
+      padding-top: 8px;
+    }
+    .constraint-input {
+      flex: 1;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 12px;
+      color: var(--text);
+      font-family: inherit;
+      font-size: 13px;
+      outline: none;
+      resize: vertical;
+      min-height: 36px;
+    }
+    .constraint-input:focus { border-color: var(--accent); }
+
+    .btn-row { display: flex; gap: 12px; flex-wrap: wrap; }
+    .btn {
+      padding: 12px 28px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 14px;
+      font-weight: 600;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover:not(:disabled) { background: var(--accent-hover); }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover:not(:disabled) { background: var(--bg3); }
+
+    /* Results grid */
+    .results-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin-top: 24px;
+    }
+    @media (max-width: 768px) {
+      .results-grid { grid-template-columns: 1fr; }
+    }
+    .result-card {
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .result-header {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .result-header h3 { font-size: 14px; font-weight: 600; }
+    .tag {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 10px;
+      border-radius: 20px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .tag-plain { background: rgba(153,153,153,0.15); color: var(--text2); }
+    .tag-constrained { background: rgba(245,158,11,0.15); color: var(--orange); }
+
+    .result-body {
+      padding: 18px;
+      flex: 1;
+      overflow-y: auto;
+      max-height: 600px;
+      font-size: 14px;
+      line-height: 1.7;
+    }
+    .result-body::-webkit-scrollbar { width: 5px; }
+    .result-body::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+    .result-body p { margin-bottom: 10px; }
+    .result-body p:last-child { margin-bottom: 0; }
+    .result-body pre {
+      background: #161616;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+      overflow-x: auto;
+      margin: 10px 0;
+    }
+    .result-body code {
+      font-family: 'SF Mono', 'Fira Code', monospace;
+      font-size: 13px;
+    }
+    .result-body :not(pre) > code {
+      background: var(--bg3);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .result-body ul, .result-body ol { padding-left: 20px; margin: 8px 0; }
+    .result-body li { margin: 4px 0; }
+    .result-body blockquote {
+      border-left: 3px solid var(--accent);
+      padding-left: 12px;
+      color: var(--text2);
+      margin: 8px 0;
+    }
+
+    .result-footer {
+      padding: 12px 18px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      gap: 20px;
+      flex-wrap: wrap;
+    }
+    .stat { font-size: 12px; color: var(--text2); }
+    .stat strong { color: var(--text); font-weight: 600; }
+
+    .typing-indicator::after {
+      content: '▊';
+      animation: blink 0.8s infinite;
+    }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+    .placeholder-text {
+      color: var(--text2);
+      font-size: 14px;
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    /* Summary */
+    .summary {
+      margin-top: 24px;
+      background: var(--bg2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px 24px;
+      display: none;
+    }
+    .summary h3 { font-size: 15px; font-weight: 600; margin-bottom: 14px; }
+    .summary-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 768px) {
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+    .summary-item {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .summary-item .label { font-size: 12px; color: var(--text2); margin-bottom: 6px; }
+    .summary-item .values { display: flex; justify-content: space-between; gap: 12px; }
+    .summary-item .val { font-size: 20px; font-weight: 700; }
+    .summary-item .val-label { font-size: 11px; color: var(--text2); }
+    .val-plain { color: var(--text2); }
+    .val-constrained { color: var(--orange); }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>Сравнение: без ограничений vs с ограничениями</h1>
+    <a href="/">← Назад к чату</a>
+  </div>
+
+  <div class="container">
+    <div class="prompt-section">
+      <h2>Запрос</h2>
+
+      <div class="model-row">
+        <label>Провайдер:</label>
+        <select id="providerSelect"></select>
+        <label>Модель:</label>
+        <select id="modelSelect"></select>
+      </div>
+
+      <textarea class="prompt-input" id="promptInput" placeholder="Введите запрос для сравнения...">Объясни, что такое рекурсия в программировании, приведи примеры использования и расскажи о возможных проблемах</textarea>
+
+      <div class="constraints-box">
+        <h3>Ограничения (применяются ко второму запросу)</h3>
+        <div class="constraint-row">
+          <div class="constraint-label">Формат ответа:</div>
+          <textarea class="constraint-input" id="formatConstraint" rows="2">Ответь строго в формате: 1) Определение (1-2 предложения), 2) Примеры (нумерованный список, каждый пример — одна строка с кодом), 3) Проблемы (буллет-лист).</textarea>
+        </div>
+        <div class="constraint-row">
+          <div class="constraint-label">Ограничение длины:</div>
+          <textarea class="constraint-input" id="lengthConstraint" rows="1">Уложись максимум в 150 слов. Будь лаконичен, без воды.</textarea>
+        </div>
+        <div class="constraint-row">
+          <div class="constraint-label">Условие завершения:</div>
+          <textarea class="constraint-input" id="stopConstraint" rows="1">После последнего пункта напиши ровно одну строку "---END---" и больше ничего не добавляй.</textarea>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn btn-primary" id="sendBtn">Отправить оба запроса</button>
+        <button class="btn btn-outline" id="clearBtn">Очистить результаты</button>
+      </div>
+    </div>
+
+    <div class="results-grid">
+      <div class="result-card">
+        <div class="result-header">
+          <h3>Без ограничений</h3>
+          <span class="tag tag-plain">PLAIN</span>
+        </div>
+        <div class="result-body" id="plainResult">
+          <div class="placeholder-text">Результат появится здесь...</div>
+        </div>
+        <div class="result-footer" id="plainStats"></div>
+      </div>
+
+      <div class="result-card">
+        <div class="result-header">
+          <h3>С ограничениями</h3>
+          <span class="tag tag-constrained">CONSTRAINED</span>
+        </div>
+        <div class="result-body" id="constrainedResult">
+          <div class="placeholder-text">Результат появится здесь...</div>
+        </div>
+        <div class="result-footer" id="constrainedStats"></div>
+      </div>
+    </div>
+
+    <div class="summary" id="summary">
+      <h3>Сравнительный анализ</h3>
+      <div class="summary-grid">
+        <div class="summary-item">
+          <div class="label">Количество слов</div>
+          <div class="values">
+            <div><div class="val val-plain" id="sumPlainWords">—</div><div class="val-label">Без ограничений</div></div>
+            <div><div class="val val-constrained" id="sumConstrWords">—</div><div class="val-label">С ограничениями</div></div>
+          </div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Количество символов</div>
+          <div class="values">
+            <div><div class="val val-plain" id="sumPlainChars">—</div><div class="val-label">Без ограничений</div></div>
+            <div><div class="val val-constrained" id="sumConstrChars">—</div><div class="val-label">С ограничениями</div></div>
+          </div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Время ответа</div>
+          <div class="values">
+            <div><div class="val val-plain" id="sumPlainTime">—</div><div class="val-label">Без ограничений</div></div>
+            <div><div class="val val-constrained" id="sumConstrTime">—</div><div class="val-label">С ограничениями</div></div>
+          </div>
+        </div>
+        <div class="summary-item">
+          <div class="label">Содержит stop-маркер "---END---"</div>
+          <div class="values">
+            <div><div class="val val-plain" id="sumPlainStop">—</div><div class="val-label">Без ограничений</div></div>
+            <div><div class="val val-constrained" id="sumConstrStop">—</div><div class="val-label">С ограничениями</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+marked.setOptions({
+  highlight: (code, lang) => {
+    if (lang && hljs.getLanguage(lang)) return hljs.highlight(code, { language: lang }).value;
+    return hljs.highlightAuto(code).value;
+  },
+  breaks: true,
+});
+
+const $ = s => document.querySelector(s);
+const providerSel = $('#providerSelect');
+const modelSel = $('#modelSelect');
+let allModels = {};
+
+async function init() {
+  try {
+    const resp = await fetch('/api/models');
+    allModels = await resp.json();
+  } catch { allModels = {}; }
+
+  const providers = Object.keys(allModels);
+  providerSel.innerHTML = providers.map(p =>
+    `<option value="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</option>`
+  ).join('');
+  if (providers.length) updateModels(providers[0]);
+  providerSel.addEventListener('change', () => updateModels(providerSel.value));
+}
+
+function updateModels(provider) {
+  const models = allModels[provider] || [];
+  modelSel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+}
+
+function countWords(text) { return text.trim().split(/\s+/).filter(Boolean).length; }
+
+async function streamToElement(el, messages, provider, model) {
+  let full = '';
+  const start = performance.now();
+  el.classList.add('typing-indicator');
+  el.innerHTML = '';
+
+  const resp = await fetch('/api/chat', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ provider, model, messages }),
+  });
+
+  const reader = resp.body.getReader();
+  const dec = new TextDecoder();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += dec.decode(value, { stream: true });
+    const lines = buffer.split('\n\n');
+    buffer = lines.pop();
+    for (const line of lines) {
+      if (!line.startsWith('data: ')) continue;
+      const data = line.slice(6);
+      if (data === '[DONE]') break;
+      if (data.startsWith('[ERROR]')) {
+        full += `\n\n**Ошибка:** ${data.slice(8)}`;
+        break;
+      }
+      full += data;
+    }
+    el.innerHTML = marked.parse(full);
+  }
+
+  el.classList.remove('typing-indicator');
+  const elapsed = ((performance.now() - start) / 1000).toFixed(1);
+  return { text: full, elapsed };
+}
+
+function renderStats(footerEl, text, elapsed) {
+  const words = countWords(text);
+  const chars = text.length;
+  footerEl.innerHTML = `
+    <span class="stat">Слов: <strong>${words}</strong></span>
+    <span class="stat">Символов: <strong>${chars}</strong></span>
+    <span class="stat">Время: <strong>${elapsed}с</strong></span>
+  `;
+}
+
+$('#sendBtn').addEventListener('click', async () => {
+  const prompt = $('#promptInput').value.trim();
+  if (!prompt) return;
+
+  const provider = providerSel.value;
+  const model = modelSel.value;
+  const formatC = $('#formatConstraint').value.trim();
+  const lengthC = $('#lengthConstraint').value.trim();
+  const stopC = $('#stopConstraint').value.trim();
+
+  const plainEl = $('#plainResult');
+  const constrEl = $('#constrainedResult');
+  const sendBtn = $('#sendBtn');
+
+  sendBtn.disabled = true;
+  plainEl.innerHTML = '<div class="placeholder-text">Загрузка...</div>';
+  constrEl.innerHTML = '<div class="placeholder-text">Загрузка...</div>';
+  $('#plainStats').innerHTML = '';
+  $('#constrainedStats').innerHTML = '';
+  $('#summary').style.display = 'none';
+
+  const plainMessages = [{ role: 'user', content: prompt }];
+
+  const systemParts = [formatC, lengthC, stopC].filter(Boolean);
+  const systemPrompt = systemParts.join('\n');
+  const constrainedMessages = [];
+  if (systemPrompt) {
+    constrainedMessages.push({ role: 'system', content: systemPrompt });
+  }
+  constrainedMessages.push({ role: 'user', content: prompt });
+
+  const [plainRes, constrRes] = await Promise.all([
+    streamToElement(plainEl, plainMessages, provider, model),
+    streamToElement(constrEl, constrainedMessages, provider, model),
+  ]);
+
+  renderStats($('#plainStats'), plainRes.text, plainRes.elapsed);
+  renderStats($('#constrainedStats'), constrRes.text, constrRes.elapsed);
+
+  const pWords = countWords(plainRes.text);
+  const cWords = countWords(constrRes.text);
+  const pChars = plainRes.text.length;
+  const cChars = constrRes.text.length;
+  const pHasStop = plainRes.text.includes('---END---');
+  const cHasStop = constrRes.text.includes('---END---');
+
+  $('#sumPlainWords').textContent = pWords;
+  $('#sumConstrWords').textContent = cWords;
+  $('#sumPlainChars').textContent = pChars;
+  $('#sumConstrChars').textContent = cChars;
+  $('#sumPlainTime').textContent = plainRes.elapsed + 'с';
+  $('#sumConstrTime').textContent = constrRes.elapsed + 'с';
+  $('#sumPlainStop').textContent = pHasStop ? 'Да' : 'Нет';
+  $('#sumConstrStop').textContent = cHasStop ? 'Да' : 'Нет';
+
+  $('#summary').style.display = 'block';
+  sendBtn.disabled = false;
+});
+
+$('#clearBtn').addEventListener('click', () => {
+  $('#plainResult').innerHTML = '<div class="placeholder-text">Результат появится здесь...</div>';
+  $('#constrainedResult').innerHTML = '<div class="placeholder-text">Результат появится здесь...</div>';
+  $('#plainStats').innerHTML = '';
+  $('#constrainedStats').innerHTML = '';
+  $('#summary').style.display = 'none';
+});
+
+init();
+</script>
+</body>
+</html>
