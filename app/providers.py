@@ -134,16 +134,13 @@ class GroqProvider(AIProvider):
 
 
 # ---------------------------------------------------------------------------
-# OpenRouter  (some models are free, e.g. deepseek, llama)
+# Anthropic Claude
 # ---------------------------------------------------------------------------
-class OpenRouterProvider(AIProvider):
-    name = "openrouter"
+class ClaudeProvider(AIProvider):
+    name = "claude"
     models = [
-        "meta-llama/llama-3.3-70b-instruct:free",
-        "qwen/qwen3-coder:free",
-        "google/gemma-3-27b-it:free",
-        "openai/gpt-oss-120b:free",
-        "nousresearch/hermes-3-llama-3.1-405b:free",
+        "claude-sonnet-4-20250514",
+        "claude-3-5-haiku-20241022",
     ]
 
     def __init__(self, api_key: str):
@@ -152,16 +149,29 @@ class OpenRouterProvider(AIProvider):
     async def stream_chat(
         self, messages: list[Message], model: str
     ) -> AsyncIterator[str]:
-        url = "https://openrouter.ai/api/v1/chat/completions"
+        url = "https://api.anthropic.com/v1/messages"
         headers = {
-            "Authorization": f"Bearer {self.api_key}",
+            "x-api-key": self.api_key,
+            "anthropic-version": "2023-06-01",
             "Content-Type": "application/json",
         }
-        body = {
+
+        system_text = None
+        api_messages = []
+        for m in messages:
+            if m.role == "system":
+                system_text = m.content
+                continue
+            api_messages.append({"role": m.role, "content": m.content})
+
+        body: dict = {
             "model": model,
-            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "max_tokens": 4096,
+            "messages": api_messages,
             "stream": True,
         }
+        if system_text:
+            body["system"] = system_text
 
         async with httpx.AsyncClient(timeout=120) as client:
             async with client.stream(
@@ -176,8 +186,9 @@ class OpenRouterProvider(AIProvider):
                         break
                     try:
                         chunk = json.loads(data)
-                        delta = chunk["choices"][0].get("delta", {})
-                        if text := delta.get("content"):
-                            yield text
-                    except (json.JSONDecodeError, IndexError, KeyError):
+                        if chunk.get("type") == "content_block_delta":
+                            text = chunk.get("delta", {}).get("text", "")
+                            if text:
+                                yield text
+                    except (json.JSONDecodeError, KeyError):
                         continue
