@@ -683,11 +683,16 @@ async function send() {
   contentEl.classList.add('typing-indicator');
 
   const systemPrompt = getSystemPrompt();
-  const apiMessages = [];
+  const apiMessages = [...chat.messages];
   if (systemPrompt) {
-    apiMessages.push({ role: 'system', content: systemPrompt });
+    const last = apiMessages[apiMessages.length - 1];
+    if (last && last.role === 'user') {
+      apiMessages[apiMessages.length - 1] = {
+        role: 'user',
+        content: '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + last.content,
+      };
+    }
   }
-  apiMessages.push(...chat.messages);
 
   let full = '';
   try {
