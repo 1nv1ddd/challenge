@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -59,10 +60,12 @@ async def chat(request: Request):
     async def event_stream():
         try:
             async for token in prov.stream_chat(messages, model):
-                yield f"data: {token}\n\n"
+                escaped = json.dumps(token, ensure_ascii=False)
+                yield f"data: {escaped}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
-            yield f"data: [ERROR] {exc}\n\n"
+            msg = str(exc).replace("\n", " ")
+            yield f"data: [ERROR] {msg}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 

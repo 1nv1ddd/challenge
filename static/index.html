@@ -720,7 +720,7 @@ async function send() {
           full += `\n\n**Ошибка:** ${data.slice(8)}`;
           break;
         }
-        full += data;
+        try { full += JSON.parse(data); } catch { full += data; }
       }
       contentEl.innerHTML = marked.parse(full);
       scrollDown();
