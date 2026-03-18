@@ -10,7 +10,6 @@ from fastapi.staticfiles import StaticFiles
 
 from .providers import (
     AIProvider,
-    ClaudeProvider,
     GeminiProvider,
     GroqProvider,
     Message,
@@ -28,8 +27,6 @@ if key := os.getenv("GEMINI_API_KEY"):
     providers["gemini"] = GeminiProvider(key)
 if key := os.getenv("GROQ_API_KEY"):
     providers["groq"] = GroqProvider(key)
-if key := os.getenv("CLAUDE_API_KEY"):
-    providers["claude"] = ClaudeProvider(key)
 
 
 @app.get("/api/models")
