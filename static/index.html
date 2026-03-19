@@ -390,6 +390,55 @@
     .constraints-panel .c-input:focus { border-color: var(--accent); }
     .constraints-panel .c-input::placeholder { color: var(--text-secondary); }
 
+    .temp-control { display: flex; align-items: center; gap: 10px; flex: 1; }
+    .temp-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: var(--bg-primary);
+      border-radius: 3px;
+      outline: none;
+    }
+    .temp-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg-secondary);
+      transition: transform 0.15s;
+    }
+    .temp-slider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .temp-slider::-moz-range-thumb {
+      width: 18px; height: 18px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg-secondary);
+    }
+    .temp-value {
+      min-width: 32px;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .temp-presets { display: flex; gap: 4px; }
+    .temp-presets button {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-secondary);
+      font-size: 11px;
+      font-family: inherit;
+      padding: 3px 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .temp-presets button:hover { border-color: var(--accent); color: var(--text-primary); }
+    .temp-presets button.active { border-color: var(--accent); color: var(--accent); background: rgba(124,92,252,.1); }
+
     /* ---- Mobile ---- */
     @media (max-width: 768px) {
       .sidebar {
@@ -455,6 +504,18 @@
         <div class="c-row">
           <div class="c-label">Стоп-условие</div>
           <textarea class="c-input" id="cStop" rows="1" placeholder='Например: закончи ответ строкой "---END---"'></textarea>
+        </div>
+        <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
+          <div class="c-label">Temperature</div>
+          <div class="temp-control">
+            <input type="range" class="temp-slider" id="tempSlider" min="0" max="2" step="0.1" value="0.7" />
+            <span class="temp-value" id="tempValue">0.7</span>
+            <div class="temp-presets">
+              <button data-t="0">0</button>
+              <button data-t="0.7" class="active">0.7</button>
+              <button data-t="1.2">1.2</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="input-wrapper">
@@ -642,6 +703,9 @@ const constraintsPanel = $('#constraintsPanel');
 const cFormat = $('#cFormat');
 const cLength = $('#cLength');
 const cStop = $('#cStop');
+const tempSlider = $('#tempSlider');
+const tempValue = $('#tempValue');
+const tempPresets = document.querySelectorAll('.temp-presets button');
 
 constraintsBtn.addEventListener('click', () => {
   constraintsPanel.classList.toggle('open');
@@ -653,8 +717,32 @@ function getSystemPrompt() {
   return parts.join('\n');
 }
 
+function getTemperature() {
+  return parseFloat(tempSlider.value);
+}
+
+function updateTempPresetHighlight() {
+  const val = tempSlider.value;
+  tempPresets.forEach(b => b.classList.toggle('active', b.dataset.t === val));
+}
+
+tempSlider.addEventListener('input', () => {
+  tempValue.textContent = parseFloat(tempSlider.value).toFixed(1);
+  updateTempPresetHighlight();
+  updateConstraintIndicator();
+});
+
+tempPresets.forEach(btn => {
+  btn.addEventListener('click', () => {
+    tempSlider.value = btn.dataset.t;
+    tempValue.textContent = parseFloat(btn.dataset.t).toFixed(1);
+    updateTempPresetHighlight();
+    updateConstraintIndicator();
+  });
+});
+
 function updateConstraintIndicator() {
-  const hasConstraints = getSystemPrompt().length > 0;
+  const hasConstraints = getSystemPrompt().length > 0 || getTemperature() !== 0.7;
   constraintsBtn.classList.toggle('active', hasConstraints);
 }
 [cFormat, cLength, cStop].forEach(el => el.addEventListener('input', updateConstraintIndicator));
@@ -703,6 +791,7 @@ async function send() {
         provider: chat.provider,
         model: chat.model,
         messages: apiMessages,
+        temperature: getTemperature(),
       }),
     });
     const reader = resp.body.getReader();

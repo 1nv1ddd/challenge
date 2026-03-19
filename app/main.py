@@ -47,6 +47,7 @@ async def chat(request: Request):
     provider_name: str = body.get("provider", "")
     model: str = body.get("model", "")
     raw_messages: list[dict] = body.get("messages", [])
+    temperature: float = body.get("temperature", 0.7)
 
     if provider_name not in providers:
         raise HTTPException(404, f"Provider '{provider_name}' not configured")
@@ -59,7 +60,7 @@ async def chat(request: Request):
 
     async def event_stream():
         try:
-            async for token in prov.stream_chat(messages, model):
+            async for token in prov.stream_chat(messages, model, temperature):
                 escaped = json.dumps(token, ensure_ascii=False)
                 yield f"data: {escaped}\n\n"
             yield "data: [DONE]\n\n"

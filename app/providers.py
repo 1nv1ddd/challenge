@@ -20,7 +20,7 @@ class AIProvider(ABC):
 
     @abstractmethod
     async def stream_chat(
-        self, messages: list[Message], model: str
+        self, messages: list[Message], model: str, temperature: float = 0.7
     ) -> AsyncIterator[str]:
         yield ""
 
@@ -39,7 +39,7 @@ class GeminiProvider(AIProvider):
         self.api_key = api_key
 
     async def stream_chat(
-        self, messages: list[Message], model: str
+        self, messages: list[Message], model: str, temperature: float = 0.7
     ) -> AsyncIterator[str]:
         url = (
             f"https://generativelanguage.googleapis.com/v1beta/models/"
@@ -57,7 +57,10 @@ class GeminiProvider(AIProvider):
                 "parts": [{"text": m.content}],
             })
 
-        body: dict = {"contents": contents}
+        body: dict = {
+            "contents": contents,
+            "generationConfig": {"temperature": temperature},
+        }
         if system_instruction:
             body["systemInstruction"] = system_instruction
 
@@ -100,7 +103,7 @@ class GroqProvider(AIProvider):
         self.api_key = api_key
 
     async def stream_chat(
-        self, messages: list[Message], model: str
+        self, messages: list[Message], model: str, temperature: float = 0.7
     ) -> AsyncIterator[str]:
         url = "https://api.groq.com/openai/v1/chat/completions"
         headers = {
@@ -111,6 +114,7 @@ class GroqProvider(AIProvider):
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "stream": True,
+            "temperature": temperature,
         }
 
         async with httpx.AsyncClient(timeout=120) as client:
