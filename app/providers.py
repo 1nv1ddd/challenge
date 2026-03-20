@@ -33,18 +33,18 @@ class AIProvider(ABC):
 
 
 GROQ_PRICING = {
-    "llama-3.1-8b-instant":    {"input": 0.05, "output": 0.08},
-    "qwen/qwen3-32b":         {"input": 0.29, "output": 0.39},
-    "llama-3.3-70b-versatile": {"input": 0.59, "output": 0.79},
+    "llama-3.1-8b-instant":                         {"input": 0.05, "output": 0.08},
+    "meta-llama/llama-4-scout-17b-16e-instruct":    {"input": 0.20, "output": 0.60},
+    "llama-3.3-70b-versatile":                      {"input": 0.59, "output": 0.79},
 }
 
 
 class GroqProvider(AIProvider):
     name = "groq"
     models = [
-        {"id": "llama-3.1-8b-instant",    "label": "Llama 3.1 8B — Fast"},
-        {"id": "qwen/qwen3-32b",          "label": "Qwen 3 32B — Balanced"},
-        {"id": "llama-3.3-70b-versatile",  "label": "Llama 3.3 70B — Smart"},
+        {"id": "llama-3.1-8b-instant",                      "label": "Llama 3.1 8B — Fast"},
+        {"id": "meta-llama/llama-4-scout-17b-16e-instruct", "label": "Llama 4 Scout 17B — Balanced"},
+        {"id": "llama-3.3-70b-versatile",                   "label": "Llama 3.3 70B — Smart"},
     ]
 
     def __init__(self, api_key: str):
