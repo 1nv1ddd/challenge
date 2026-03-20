@@ -268,6 +268,24 @@
     }
     @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
 
+    .msg-meta {
+      display: flex;
+      gap: 16px;
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: var(--bg-tertiary);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      animation: fadeIn 0.3s ease;
+    }
+    .msg-meta .meta-item {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .msg-meta .meta-val { color: var(--text-primary); font-weight: 600; }
+
     /* ---- Input ---- */
     .input-area {
       padding: 16px 20px 20px;
@@ -474,8 +492,6 @@
   <main class="main">
     <div class="topbar">
       <button class="hamburger" id="hamburger">☰</button>
-      <label>Провайдер:</label>
-      <select id="providerSelect"></select>
       <label>Модель:</label>
       <select id="modelSelect"></select>
     </div>
@@ -484,7 +500,7 @@
       <div class="welcome" id="welcome">
         <div class="welcome-icon">⚡</div>
         <h2>Добро пожаловать</h2>
-        <p>Выберите провайдер и модель сверху, затем начните разговор. Все чаты сохраняются локально в браузере.</p>
+        <p>Выберите модель сверху, затем начните разговор. Все чаты сохраняются локально в браузере.</p>
       </div>
     </div>
 
@@ -535,7 +551,6 @@ marked.setOptions({
 });
 
 const $ = s => document.querySelector(s);
-const providerSel = $('#providerSelect');
 const modelSel    = $('#modelSelect');
 const messagesEl  = $('#messages');
 const welcomeEl   = $('#welcome');
@@ -545,49 +560,41 @@ const chatsList   = $('#chatsList');
 const sidebar     = $('#sidebar');
 const overlay     = $('#overlay');
 
-let allModels   = {};
+let providerName = '';
+let modelList = [];
 let chats       = JSON.parse(localStorage.getItem('aichat_chats') || '[]');
 let activeChatId = null;
 let isStreaming  = false;
 
-// ---- Storage helpers ----
 function saveChats() { localStorage.setItem('aichat_chats', JSON.stringify(chats)); }
 function getChat(id) { return chats.find(c => c.id === id); }
 
-// ---- Init ----
 async function init() {
   try {
     const resp = await fetch('/api/models');
-    allModels = await resp.json();
-  } catch { allModels = {}; }
+    const allModels = await resp.json();
+    const providers = Object.keys(allModels);
+    if (providers.length) {
+      providerName = providers[0];
+      modelList = allModels[providerName] || [];
+    }
+  } catch { modelList = []; }
 
-  const providers = Object.keys(allModels);
-  providerSel.innerHTML = providers.map(p =>
-    `<option value="${p}">${p.charAt(0).toUpperCase() + p.slice(1)}</option>`
+  modelSel.innerHTML = modelList.map(m =>
+    `<option value="${m.id}">${m.label}</option>`
   ).join('');
 
-  if (providers.length) updateModels(providers[0]);
-
-  providerSel.addEventListener('change', () => {
-    updateModels(providerSel.value);
-    syncChatProvider();
-  });
-  modelSel.addEventListener('change', syncChatProvider);
+  modelSel.addEventListener('change', syncChatModel);
 
   renderChatsList();
   if (chats.length) selectChat(chats[0].id);
 }
 
-function updateModels(provider) {
-  const models = allModels[provider] || [];
-  modelSel.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
-}
-
-function syncChatProvider() {
+function syncChatModel() {
   if (!activeChatId) return;
   const chat = getChat(activeChatId);
   if (chat) {
-    chat.provider = providerSel.value;
+    chat.provider = providerName;
     chat.model = modelSel.value;
     saveChats();
   }
@@ -595,13 +602,11 @@ function syncChatProvider() {
 
 // ---- Chat CRUD ----
 function createChat() {
-  const provider = providerSel.value;
-  const model = modelSel.value;
   const chat = {
     id: Date.now().toString(),
     title: 'Новый чат',
-    provider,
-    model,
+    provider: providerName,
+    model: modelSel.value,
     messages: [],
   };
   chats.unshift(chat);
@@ -627,8 +632,6 @@ function selectChat(id) {
   const chat = getChat(id);
   if (!chat) return;
 
-  providerSel.value = chat.provider;
-  updateModels(chat.provider);
   modelSel.value = chat.model;
 
   renderChatsList();
@@ -783,12 +786,13 @@ async function send() {
   }
 
   let full = '';
+  let meta = null;
   try {
     const resp = await fetch('/api/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        provider: chat.provider,
+        provider: providerName,
         model: chat.model,
         messages: apiMessages,
         temperature: getTemperature(),
@@ -810,6 +814,10 @@ async function send() {
         if (!line.startsWith('data: ')) continue;
         const data = line.slice(6);
         if (data === '[DONE]') break;
+        if (data.startsWith('[META]')) {
+          try { meta = JSON.parse(data.slice(6)); } catch {}
+          continue;
+        }
         if (data.startsWith('[ERROR]')) {
           full += `\n\n**Ошибка:** ${data.slice(8)}`;
           break;
@@ -825,6 +833,21 @@ async function send() {
   }
 
   contentEl.classList.remove('typing-indicator');
+
+  if (meta) {
+    const metaEl = document.createElement('div');
+    metaEl.className = 'msg-meta';
+    const timeSec = (meta.time_ms / 1000).toFixed(1);
+    const costStr = meta.cost_usd > 0 ? `$${meta.cost_usd.toFixed(6)}` : 'бесплатно';
+    metaEl.innerHTML = `
+      <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
+      <div class="meta-item">Токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
+      <div class="meta-item">Стоимость: <span class="meta-val">${costStr}</span></div>
+    `;
+    contentEl.parentElement.appendChild(metaEl);
+    scrollDown();
+  }
+
   chat.messages.push({ role: 'assistant', content: full });
   saveChats();
   isStreaming = false;

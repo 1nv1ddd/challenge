@@ -9,12 +9,7 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from .providers import (
-    AIProvider,
-    GeminiProvider,
-    GroqProvider,
-    Message,
-)
+from .providers import AIProvider, GroqProvider, Message
 
 load_dotenv()
 
@@ -24,15 +19,12 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 providers: dict[str, AIProvider] = {}
 
-if key := os.getenv("GEMINI_API_KEY"):
-    providers["gemini"] = GeminiProvider(key)
 if key := os.getenv("GROQ_API_KEY"):
     providers["groq"] = GroqProvider(key)
 
 
 @app.get("/api/models")
 async def list_models():
-    """Return available providers and their models."""
     result = {}
     for name, prov in providers.items():
         result[name] = prov.models
@@ -41,7 +33,6 @@ async def list_models():
 
 @app.post("/api/chat")
 async def chat(request: Request):
-    """Stream a chat completion."""
     body = await request.json()
 
     provider_name: str = body.get("provider", "")
@@ -53,16 +44,20 @@ async def chat(request: Request):
         raise HTTPException(404, f"Provider '{provider_name}' not configured")
 
     prov = providers[provider_name]
-    if model not in prov.models:
+    model_ids = [m["id"] for m in prov.models]
+    if model not in model_ids:
         raise HTTPException(400, f"Model '{model}' not available for {provider_name}")
 
     messages = [Message(role=m["role"], content=m["content"]) for m in raw_messages]
 
     async def event_stream():
         try:
-            async for token in prov.stream_chat(messages, model, temperature):
-                escaped = json.dumps(token, ensure_ascii=False)
-                yield f"data: {escaped}\n\n"
+            async for result in prov.stream_chat(messages, model, temperature):
+                if result.text is not None:
+                    escaped = json.dumps(result.text, ensure_ascii=False)
+                    yield f"data: {escaped}\n\n"
+                if result.meta is not None:
+                    yield f"data: [META]{json.dumps(result.meta)}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as exc:
             msg = str(exc).replace("\n", " ")
@@ -78,7 +73,6 @@ async def index():
         content=html,
         headers={"Cache-Control": "no-cache, no-store, must-revalidate"},
     )
-
 
 
 if STATIC_DIR.exists():
