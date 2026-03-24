@@ -774,16 +774,10 @@ async function send() {
   contentEl.classList.add('typing-indicator');
 
   const systemPrompt = getSystemPrompt();
-  const apiMessages = [...chat.messages];
-  if (systemPrompt) {
-    const last = apiMessages[apiMessages.length - 1];
-    if (last && last.role === 'user') {
-      apiMessages[apiMessages.length - 1] = {
-        role: 'user',
-        content: '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + last.content,
-      };
-    }
-  }
+  const userForModel = systemPrompt
+    ? '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + text
+    : text;
+  const apiMessages = [{ role: 'user', content: userForModel }];
 
   let full = '';
   let meta = null;
@@ -794,6 +788,7 @@ async function send() {
       body: JSON.stringify({
         provider: providerName,
         model: chat.model,
+        conversation_id: chat.id,
         messages: apiMessages,
         temperature: getTemperature(),
       }),

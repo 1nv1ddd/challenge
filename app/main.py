@@ -17,13 +17,14 @@ load_dotenv()
 app = FastAPI(title="AI Chat Hub")
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
+MEMORY_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_memory.json"
 
 providers: dict[str, AIProvider] = {}
 
 if key := os.getenv("GROQ_API_KEY"):
     providers["groq"] = GroqProvider(key)
 
-agent = SimpleChatAgent(providers)
+agent = SimpleChatAgent(providers, memory_path=MEMORY_PATH)
 
 
 @app.get("/api/models")
@@ -37,6 +38,7 @@ async def chat(request: Request):
 
     provider_name: str = body.get("provider", "")
     model: str = body.get("model", "")
+    conversation_id: str = body.get("conversation_id", "default")
     raw_messages: list[dict] = body.get("messages", [])
     temperature: float = body.get("temperature", 0.7)
 
@@ -45,6 +47,7 @@ async def chat(request: Request):
             async for result in agent.stream_reply(
                 provider_name=provider_name,
                 model=model,
+                conversation_id=conversation_id,
                 raw_messages=raw_messages,
                 temperature=temperature,
             ):
