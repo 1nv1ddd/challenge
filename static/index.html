@@ -270,6 +270,7 @@
 
     .msg-meta {
       display: flex;
+      flex-wrap: wrap;
       gap: 16px;
       margin-top: 10px;
       padding: 8px 12px;
@@ -834,10 +835,22 @@ async function send() {
     metaEl.className = 'msg-meta';
     const timeSec = (meta.time_ms / 1000).toFixed(1);
     const costStr = meta.cost_usd > 0 ? `$${meta.cost_usd.toFixed(6)}` : 'бесплатно';
+    const totalCostStr = meta.conversation_total_cost_usd > 0
+      ? `$${meta.conversation_total_cost_usd.toFixed(6)}`
+      : 'бесплатно';
+    const limitPct = meta.prompt_usage_percent !== undefined
+      ? `${meta.prompt_usage_percent}%`
+      : 'n/a';
     metaEl.innerHTML = `
       <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
-      <div class="meta-item">Токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
-      <div class="meta-item">Стоимость: <span class="meta-val">${costStr}</span></div>
+      <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
+      <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
+      <div class="meta-item">Ответ модели: <span class="meta-val">${meta.response_tokens ?? meta.completion_tokens}</span> ток.</div>
+      <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
+      <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
+      <div class="meta-item">Стоимость запроса: <span class="meta-val">${costStr}</span></div>
+      <div class="meta-item">Стоимость диалога: <span class="meta-val">${totalCostStr}</span></div>
+      <div class="meta-item">Токены диалога (API): <span class="meta-val">${meta.conversation_total_tokens ?? '-'}</span></div>
     `;
     contentEl.parentElement.appendChild(metaEl);
     scrollDown();
