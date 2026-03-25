@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import time
 from abc import ABC, abstractmethod
@@ -41,6 +42,12 @@ class RouterAIProvider(AIProvider):
     def __init__(self, api_key: str):
         self.api_key = api_key
 
+    @staticmethod
+    def _iter_text_chunks(text: str, chunk_size: int = 48):
+        # Emit small pieces so UI can render "typing" progressively.
+        for i in range(0, len(text), chunk_size):
+            yield text[i : i + chunk_size]
+
     async def stream_chat(
         self, messages: list[Message], model: str, temperature: float = 0.7
     ) -> AsyncIterator[StreamResult]:
@@ -74,7 +81,9 @@ class RouterAIProvider(AIProvider):
         )
 
         if text:
-            yield StreamResult(text=text)
+            for chunk in self._iter_text_chunks(text):
+                yield StreamResult(text=chunk)
+                await asyncio.sleep(0.01)
 
         yield StreamResult(meta={
             "time_ms": elapsed_ms,
