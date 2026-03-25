@@ -12,6 +12,11 @@ MODEL_CONTEXT_LIMITS = {
     "meta-llama/llama-4-scout-17b-16e-instruct": 32768,
     "llama-3.3-70b-versatile": 32768,
 }
+MODEL_PAYLOAD_LIMITS_BYTES = {
+    "llama-3.1-8b-instant": 3_500_000,
+    "meta-llama/llama-4-scout-17b-16e-instruct": 3_500_000,
+    "llama-3.3-70b-versatile": 3_500_000,
+}
 
 
 class SimpleChatAgent:
@@ -143,6 +148,13 @@ class SimpleChatAgent:
     def _estimate_tokens_messages(self, messages: list[Message]) -> int:
         return sum(self._estimate_tokens_text(msg.content) for msg in messages)
 
+    @staticmethod
+    def _estimate_payload_bytes(messages: list[Message]) -> int:
+        payload = {
+            "messages": [{"role": m.role, "content": m.content} for m in messages]
+        }
+        return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+
     async def stream_reply(
         self,
         provider_name: str,
@@ -172,24 +184,42 @@ class SimpleChatAgent:
             request_messages = incoming_messages
 
         context_limit = MODEL_CONTEXT_LIMITS.get(model, 32768)
+        payload_limit = MODEL_PAYLOAD_LIMITS_BYTES.get(model, 3_500_000)
         projected_prompt_tokens = history_tokens_before + current_request_tokens
         if projected_prompt_tokens > context_limit:
             raise ValueError(
                 f"Context overflow: estimated {projected_prompt_tokens} tokens exceeds "
                 f"limit {context_limit} for model '{model}'"
             )
+        estimated_payload_bytes = self._estimate_payload_bytes(request_messages)
+        if estimated_payload_bytes > payload_limit:
+            raise ValueError(
+                f"Payload overflow: estimated {estimated_payload_bytes} bytes exceeds "
+                f"limit {payload_limit} bytes for model '{model}'. "
+                "Start a new chat or shorten history."
+            )
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
 
-        async for result in provider.stream_chat(
-            request_messages, model, normalized_temperature
-        ):
-            if result.text:
-                assistant_chunks.append(result.text)
-                yield result
-            if result.meta is not None:
-                provider_meta = result.meta
+        try:
+            async for result in provider.stream_chat(
+                request_messages, model, normalized_temperature
+            ):
+                if result.text:
+                    assistant_chunks.append(result.text)
+                    yield result
+                if result.meta is not None:
+                    provider_meta = result.meta
+        except Exception as exc:  # noqa: BLE001
+            err = str(exc)
+            if "413" in err:
+                raise ValueError(
+                    f"Payload overflow: provider rejected request body "
+                    f"({estimated_payload_bytes} bytes). "
+                    "Start a new chat or shorten history."
+                ) from exc
+            raise
 
         assistant_text = "".join(assistant_chunks)
         if assistant_text:
@@ -235,6 +265,11 @@ class SimpleChatAgent:
                 "model_context_limit_tokens": context_limit,
                 "prompt_usage_percent": round(
                     (projected_prompt_tokens / context_limit) * 100, 2
+                ),
+                "request_payload_bytes": estimated_payload_bytes,
+                "payload_limit_bytes": payload_limit,
+                "payload_usage_percent": round(
+                    (estimated_payload_bytes / payload_limit) * 100, 2
                 ),
                 "estimated": True,
             }
