@@ -35,7 +35,7 @@ class AIProvider(ABC):
 class RouterAIProvider(AIProvider):
     name = "routerai"
     models = [
-        {"id": "deepseek/deepseek-v3.2", "label": "DeepSeek V3.2 — RouterAI"},
+        {"id": "openai/gpt-4o-mini", "label": "GPT-4o Mini — RouterAI"},
     ]
 
     def __init__(self, api_key: str):

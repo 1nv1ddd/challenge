@@ -8,10 +8,10 @@ from pathlib import Path
 from .providers import AIProvider, Message, StreamResult
 
 MODEL_CONTEXT_LIMITS = {
-    "deepseek/deepseek-v3.2": 164000,
+    "openai/gpt-4o-mini": 128000,
 }
-INPUT_PRICE_RUB_PER_MILLION = 27.0
-OUTPUT_PRICE_RUB_PER_MILLION = 39.0
+INPUT_PRICE_RUB_PER_MILLION = 15.0
+OUTPUT_PRICE_RUB_PER_MILLION = 63.0
 
 
 class SimpleChatAgent:
