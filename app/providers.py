@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 import json
 import time
 from abc import ABC, abstractmethod
@@ -42,12 +41,6 @@ class RouterAIProvider(AIProvider):
     def __init__(self, api_key: str):
         self.api_key = api_key
 
-    @staticmethod
-    def _iter_text_chunks(text: str, chunk_size: int = 48):
-        # Emit small pieces so UI can render "typing" progressively.
-        for i in range(0, len(text), chunk_size):
-            yield text[i : i + chunk_size]
-
     async def stream_chat(
         self, messages: list[Message], model: str, temperature: float = 0.7
     ) -> AsyncIterator[StreamResult]:
@@ -60,30 +53,36 @@ class RouterAIProvider(AIProvider):
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
             "temperature": temperature,
+            "stream": True,
         }
 
         t_start = time.monotonic()
+        usage = {}
 
         async with httpx.AsyncClient(timeout=120) as client:
-            resp = await client.post(url, json=body, headers=headers)
-            resp.raise_for_status()
-            payload = resp.json()
+            async with client.stream("POST", url, json=body, headers=headers) as resp:
+                resp.raise_for_status()
+                async for line in resp.aiter_lines():
+                    if not line.startswith("data: "):
+                        continue
+                    data = line[6:]
+                    if data.strip() == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                    except json.JSONDecodeError:
+                        continue
+
+                    if u := chunk.get("usage"):
+                        usage = u
+                    delta = chunk.get("choices", [{}])[0].get("delta", {})
+                    if text := delta.get("content"):
+                        yield StreamResult(text=text)
 
         elapsed_ms = round((time.monotonic() - t_start) * 1000)
-        usage = payload.get("usage", {})
         prompt_tokens = int(usage.get("prompt_tokens", 0))
         completion_tokens = int(usage.get("completion_tokens", 0))
         total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens))
-        text = (
-            payload.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
-
-        if text:
-            for chunk in self._iter_text_chunks(text):
-                yield StreamResult(text=chunk)
-                await asyncio.sleep(0.01)
 
         yield StreamResult(meta={
             "time_ms": elapsed_ms,

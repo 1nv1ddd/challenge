@@ -709,16 +709,61 @@ function renderMessages(msgs) {
     return;
   }
   welcomeEl.style.display = 'none';
-  messagesEl.innerHTML = msgs.map(m => msgHTML(m.role, m.content)).join('');
+  messagesEl.innerHTML = msgs.map(m => msgHTML(m.role, m.content, m.meta)).join('');
   scrollDown();
 }
 
-function msgHTML(role, content) {
+function buildMetaHTML(meta) {
+  if (!meta) return '';
+  const timeSec = (meta.time_ms / 1000).toFixed(1);
+  const costStr = meta.cost_rub > 0 ? `${meta.cost_rub.toFixed(6)} ₽` : '0 ₽';
+  const totalCostStr = meta.conversation_total_cost_rub > 0
+    ? `${meta.conversation_total_cost_rub.toFixed(6)} ₽`
+    : '0 ₽';
+  const limitPct = meta.prompt_usage_percent !== undefined
+    ? `${meta.prompt_usage_percent}%`
+    : 'n/a';
+  const limitPctNum = Number.isFinite(Number(meta.prompt_usage_percent))
+    ? Math.max(0, Math.min(100, Number(meta.prompt_usage_percent)))
+    : 0;
+  const gaugeHtml = `
+    <div class="context-gauge">
+      <div class="context-gauge-ring" style="--p:${limitPctNum}%;">
+        <span class="context-gauge-value">${Math.round(limitPctNum)}%</span>
+      </div>
+      <div class="context-gauge-label">
+        <span>Контекст</span>
+        <span>${meta.prompt_tokens ?? '-'} / ${meta.model_context_limit_tokens ?? '-'}</span>
+      </div>
+    </div>
+  `;
+  const compactInfo = meta.history_compacted
+    ? `<div class="meta-item">Суммаризация: <span class="meta-val">включена</span> (${meta.history_tokens_before_compaction} → ${meta.history_tokens_after_compaction} ток.)</div>`
+    : '';
+  return `
+    <div class="msg-meta">
+      ${gaugeHtml}
+      <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
+      <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
+      <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
+      <div class="meta-item">Ответ модели: <span class="meta-val">${meta.response_tokens ?? meta.completion_tokens}</span> ток.</div>
+      <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
+      <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
+      ${compactInfo}
+      <div class="meta-item">Стоимость запроса: <span class="meta-val">${costStr}</span></div>
+      <div class="meta-item">Стоимость диалога: <span class="meta-val">${totalCostStr}</span></div>
+      <div class="meta-item">Токены диалога (API): <span class="meta-val">${meta.conversation_total_tokens ?? '-'}</span></div>
+    </div>
+  `;
+}
+
+function msgHTML(role, content, meta = null) {
   const avatarClass = role === 'user' ? 'user' : 'assistant';
   const icon = role === 'user' ? '👤' : '🤖';
   const label = role === 'user' ? 'Вы' : 'Ассистент';
   const rendered = role === 'assistant' ? marked.parse(content) : escapeHtml(content).replace(/\n/g, '<br>');
-  return `<div class="msg"><div class="msg-avatar ${avatarClass}">${icon}</div><div class="msg-body"><div class="msg-role">${label}</div><div class="msg-content">${rendered}</div></div></div>`;
+  const metaHtml = role === 'assistant' ? buildMetaHTML(meta) : '';
+  return `<div class="msg"><div class="msg-avatar ${avatarClass}">${icon}</div><div class="msg-body"><div class="msg-role">${label}</div><div class="msg-content">${rendered}</div>${metaHtml}</div></div>`;
 }
 
 function appendMsg(role) {
@@ -870,50 +915,13 @@ async function send() {
 
   if (meta) {
     const metaEl = document.createElement('div');
-    metaEl.className = 'msg-meta';
-    const timeSec = (meta.time_ms / 1000).toFixed(1);
-    const costStr = meta.cost_rub > 0 ? `${meta.cost_rub.toFixed(6)} ₽` : '0 ₽';
-    const totalCostStr = meta.conversation_total_cost_rub > 0
-      ? `${meta.conversation_total_cost_rub.toFixed(6)} ₽`
-      : '0 ₽';
-    const limitPct = meta.prompt_usage_percent !== undefined
-      ? `${meta.prompt_usage_percent}%`
-      : 'n/a';
-    const limitPctNum = Number.isFinite(Number(meta.prompt_usage_percent))
-      ? Math.max(0, Math.min(100, Number(meta.prompt_usage_percent)))
-      : 0;
-    const gaugeHtml = `
-      <div class="context-gauge">
-        <div class="context-gauge-ring" style="--p:${limitPctNum}%;">
-          <span class="context-gauge-value">${Math.round(limitPctNum)}%</span>
-        </div>
-        <div class="context-gauge-label">
-          <span>Контекст</span>
-          <span>${meta.prompt_tokens ?? '-'} / ${meta.model_context_limit_tokens ?? '-'}</span>
-        </div>
-      </div>
-    `;
-    const compactInfo = meta.history_compacted
-      ? `<div class="meta-item">Суммаризация: <span class="meta-val">включена</span> (${meta.history_tokens_before_compaction} → ${meta.history_tokens_after_compaction} ток.)</div>`
-      : '';
-    metaEl.innerHTML = `
-      ${gaugeHtml}
-      <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
-      <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
-      <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
-      <div class="meta-item">Ответ модели: <span class="meta-val">${meta.response_tokens ?? meta.completion_tokens}</span> ток.</div>
-      <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
-      <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
-      ${compactInfo}
-      <div class="meta-item">Стоимость запроса: <span class="meta-val">${costStr}</span></div>
-      <div class="meta-item">Стоимость диалога: <span class="meta-val">${totalCostStr}</span></div>
-      <div class="meta-item">Токены диалога (API): <span class="meta-val">${meta.conversation_total_tokens ?? '-'}</span></div>
-    `;
-    contentEl.parentElement.appendChild(metaEl);
+    metaEl.innerHTML = buildMetaHTML(meta);
+    const renderedMeta = metaEl.firstElementChild;
+    if (renderedMeta) contentEl.parentElement.appendChild(renderedMeta);
     scrollDown();
   }
 
-  chat.messages.push({ role: 'assistant', content: full });
+  chat.messages.push({ role: 'assistant', content: full, meta: meta || null });
   saveChats();
   isStreaming = false;
   sendBtn.disabled = false;
