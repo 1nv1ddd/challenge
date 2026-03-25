@@ -286,6 +286,44 @@
       gap: 4px;
     }
     .msg-meta .meta-val { color: var(--text-primary); font-weight: 600; }
+    .context-gauge {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-right: 6px;
+    }
+    .context-gauge-ring {
+      --p: 0%;
+      position: relative;
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: conic-gradient(var(--accent) var(--p), #3b3b3b var(--p));
+      display: grid;
+      place-items: center;
+      flex-shrink: 0;
+    }
+    .context-gauge-ring::before {
+      content: "";
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+    }
+    .context-gauge-value {
+      position: absolute;
+      font-size: 11px;
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+    .context-gauge-label {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.2;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
 
     /* ---- Input ---- */
     .input-area {
@@ -841,10 +879,25 @@ async function send() {
     const limitPct = meta.prompt_usage_percent !== undefined
       ? `${meta.prompt_usage_percent}%`
       : 'n/a';
+    const limitPctNum = Number.isFinite(Number(meta.prompt_usage_percent))
+      ? Math.max(0, Math.min(100, Number(meta.prompt_usage_percent)))
+      : 0;
+    const gaugeHtml = `
+      <div class="context-gauge">
+        <div class="context-gauge-ring" style="--p:${limitPctNum}%;">
+          <span class="context-gauge-value">${Math.round(limitPctNum)}%</span>
+        </div>
+        <div class="context-gauge-label">
+          <span>Контекст</span>
+          <span>${meta.prompt_tokens ?? '-'} / ${meta.model_context_limit_tokens ?? '-'}</span>
+        </div>
+      </div>
+    `;
     const compactInfo = meta.history_compacted
       ? `<div class="meta-item">Суммаризация: <span class="meta-val">включена</span> (${meta.history_tokens_before_compaction} → ${meta.history_tokens_after_compaction} ток.)</div>`
       : '';
     metaEl.innerHTML = `
+      ${gaugeHtml}
       <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
       <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
       <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
