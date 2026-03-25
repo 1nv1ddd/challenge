@@ -8,15 +8,10 @@ from pathlib import Path
 from .providers import AIProvider, Message, StreamResult
 
 MODEL_CONTEXT_LIMITS = {
-    "llama-3.1-8b-instant": 32768,
-    "meta-llama/llama-4-scout-17b-16e-instruct": 32768,
-    "llama-3.3-70b-versatile": 32768,
+    "deepseek/deepseek-v3.2": 164000,
 }
-MODEL_PAYLOAD_LIMITS_BYTES = {
-    "llama-3.1-8b-instant": 3_500_000,
-    "meta-llama/llama-4-scout-17b-16e-instruct": 3_500_000,
-    "llama-3.3-70b-versatile": 3_500_000,
-}
+INPUT_PRICE_RUB_PER_MILLION = 27.0
+OUTPUT_PRICE_RUB_PER_MILLION = 39.0
 
 
 class SimpleChatAgent:
@@ -80,7 +75,7 @@ class SimpleChatAgent:
             "prompt_tokens_total": 0,
             "completion_tokens_total": 0,
             "total_tokens_total": 0,
-            "cost_usd_total": 0.0,
+            "cost_rub_total": 0.0,
         }
 
     def _normalize_stats(self, stats: dict) -> dict:
@@ -98,8 +93,8 @@ class SimpleChatAgent:
             defaults["total_tokens_total"] = int(
                 stats.get("total_tokens_total", defaults["total_tokens_total"])
             )
-            defaults["cost_usd_total"] = float(
-                stats.get("cost_usd_total", defaults["cost_usd_total"])
+            defaults["cost_rub_total"] = float(
+                stats.get("cost_rub_total", stats.get("cost_usd_total", defaults["cost_rub_total"]))
             )
         except (TypeError, ValueError):
             return self._empty_stats()
@@ -148,12 +143,103 @@ class SimpleChatAgent:
     def _estimate_tokens_messages(self, messages: list[Message]) -> int:
         return sum(self._estimate_tokens_text(msg.content) for msg in messages)
 
-    @staticmethod
-    def _estimate_payload_bytes(messages: list[Message]) -> int:
-        payload = {
-            "messages": [{"role": m.role, "content": m.content} for m in messages]
-        }
-        return len(json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+    def _summarize_history(
+        self,
+        messages: list[Message],
+        max_items: int = 60,
+        max_chars_per_item: int = 200,
+    ) -> str:
+        """Build a compact deterministic summary without extra LLM call."""
+        if not messages:
+            return "Диалог пока пуст."
+
+        lines: list[str] = []
+        start = max(0, len(messages) - max_items)
+        for msg in messages[start:]:
+            role = "Пользователь" if msg.role == "user" else "Ассистент"
+            content = " ".join(msg.content.split())
+            if len(content) > max_chars_per_item:
+                content = content[: max_chars_per_item - 1] + "…"
+            lines.append(f"- {role}: {content}")
+
+        return (
+            "Сводка предыдущего диалога (сжато):\n"
+            + "\n".join(lines)
+            + "\nИспользуй это как контекст и продолжай диалог."
+        )
+
+    def _fit_history_into_context(
+        self,
+        stored_history: list[Message],
+        incoming_messages: list[Message],
+        context_limit: int,
+    ) -> tuple[list[Message], dict]:
+        """Compress history when context would overflow."""
+        if not incoming_messages:
+            return stored_history, {
+                "history_compacted": False,
+                "history_tokens_before_compaction": self._estimate_tokens_messages(stored_history),
+                "history_tokens_after_compaction": self._estimate_tokens_messages(stored_history),
+            }
+
+        original_history_tokens = self._estimate_tokens_messages(stored_history)
+        keep_tail = 8
+        summary_max_items = 80
+        summary_item_chars = 220
+        compacted = False
+
+        while True:
+            candidate_history = stored_history
+            if stored_history:
+                tail = stored_history[-keep_tail:] if keep_tail > 0 else []
+                older = stored_history[:-keep_tail] if keep_tail > 0 else stored_history
+                if older:
+                    summary_text = self._summarize_history(
+                        older,
+                        max_items=summary_max_items,
+                        max_chars_per_item=summary_item_chars,
+                    )
+                    summary_message = Message(
+                        role="system",
+                        content=summary_text,
+                    )
+                    candidate_history = [summary_message, *tail]
+                    compacted = True
+
+            candidate_tokens = self._estimate_tokens_messages(candidate_history + incoming_messages)
+            if candidate_tokens <= context_limit:
+                return candidate_history, {
+                    "history_compacted": compacted,
+                    "history_tokens_before_compaction": original_history_tokens,
+                    "history_tokens_after_compaction": self._estimate_tokens_messages(candidate_history),
+                }
+
+            # Tighten compaction progressively.
+            if keep_tail > 2:
+                keep_tail = max(2, keep_tail - 2)
+                summary_max_items = max(20, summary_max_items - 15)
+                summary_item_chars = max(120, summary_item_chars - 20)
+                continue
+
+            # Last resort: only short system summary.
+            summary_text = self._summarize_history(
+                stored_history,
+                max_items=20,
+                max_chars_per_item=120,
+            )
+            candidate_history = [Message(role="system", content=summary_text)]
+            candidate_tokens = self._estimate_tokens_messages(candidate_history + incoming_messages)
+            if candidate_tokens <= context_limit:
+                return candidate_history, {
+                    "history_compacted": True,
+                    "history_tokens_before_compaction": original_history_tokens,
+                    "history_tokens_after_compaction": self._estimate_tokens_messages(candidate_history),
+                }
+
+            raise ValueError(
+                f"Context overflow: unable to compact history under limit {context_limit}. "
+                "Start a new chat."
+            )
 
     async def stream_reply(
         self,
@@ -183,43 +269,40 @@ class SimpleChatAgent:
             # Fallback mode: allow full sync payloads.
             request_messages = incoming_messages
 
-        context_limit = MODEL_CONTEXT_LIMITS.get(model, 32768)
-        payload_limit = MODEL_PAYLOAD_LIMITS_BYTES.get(model, 3_500_000)
+        context_limit = MODEL_CONTEXT_LIMITS.get(model, 164000)
         projected_prompt_tokens = history_tokens_before + current_request_tokens
+        compaction_meta = {
+            "history_compacted": False,
+            "history_tokens_before_compaction": history_tokens_before,
+            "history_tokens_after_compaction": history_tokens_before,
+        }
+        if projected_prompt_tokens > context_limit and len(incoming_messages) == 1:
+            fitted_history, compaction_meta = self._fit_history_into_context(
+                stored_history=stored_history,
+                incoming_messages=incoming_messages,
+                context_limit=context_limit,
+            )
+            request_messages = [*fitted_history, incoming_messages[0]]
+            history_tokens_before = self._estimate_tokens_messages(fitted_history)
+            projected_prompt_tokens = history_tokens_before + current_request_tokens
+
         if projected_prompt_tokens > context_limit:
             raise ValueError(
                 f"Context overflow: estimated {projected_prompt_tokens} tokens exceeds "
                 f"limit {context_limit} for model '{model}'"
             )
-        estimated_payload_bytes = self._estimate_payload_bytes(request_messages)
-        if estimated_payload_bytes > payload_limit:
-            raise ValueError(
-                f"Payload overflow: estimated {estimated_payload_bytes} bytes exceeds "
-                f"limit {payload_limit} bytes for model '{model}'. "
-                "Start a new chat or shorten history."
-            )
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
 
-        try:
-            async for result in provider.stream_chat(
-                request_messages, model, normalized_temperature
-            ):
-                if result.text:
-                    assistant_chunks.append(result.text)
-                    yield result
-                if result.meta is not None:
-                    provider_meta = result.meta
-        except Exception as exc:  # noqa: BLE001
-            err = str(exc)
-            if "413" in err:
-                raise ValueError(
-                    f"Payload overflow: provider rejected request body "
-                    f"({estimated_payload_bytes} bytes). "
-                    "Start a new chat or shorten history."
-                ) from exc
-            raise
+        async for result in provider.stream_chat(
+            request_messages, model, normalized_temperature
+        ):
+            if result.text:
+                assistant_chunks.append(result.text)
+                yield result
+            if result.meta is not None:
+                provider_meta = result.meta
 
         assistant_text = "".join(assistant_chunks)
         if assistant_text:
@@ -236,14 +319,18 @@ class SimpleChatAgent:
             prompt_tokens = int((provider_meta or {}).get("prompt_tokens", 0))
             completion_tokens = int((provider_meta or {}).get("completion_tokens", 0))
             total_tokens = int((provider_meta or {}).get("total_tokens", 0))
-            request_cost = float((provider_meta or {}).get("cost_usd", 0.0))
+            request_cost_rub = (
+                prompt_tokens * INPUT_PRICE_RUB_PER_MILLION
+                + completion_tokens * OUTPUT_PRICE_RUB_PER_MILLION
+            ) / 1_000_000
+            prompt_for_limit = prompt_tokens if prompt_tokens > 0 else projected_prompt_tokens
 
             stats = conversation_state["stats"]
             stats["turns"] += 1
             stats["prompt_tokens_total"] += prompt_tokens
             stats["completion_tokens_total"] += completion_tokens
             stats["total_tokens_total"] += total_tokens
-            stats["cost_usd_total"] += request_cost
+            stats["cost_rub_total"] += request_cost_rub
             self._save_history()
 
             enriched_meta = {
@@ -252,25 +339,23 @@ class SimpleChatAgent:
                 "prompt_tokens": prompt_tokens,
                 "completion_tokens": completion_tokens,
                 "total_tokens": total_tokens,
-                "cost_usd": round(request_cost, 6),
+                "cost_rub": round(request_cost_rub, 6),
                 # Requested token counters.
                 "current_request_tokens": current_request_tokens,
                 "history_tokens": history_tokens_before,
                 "response_tokens": completion_tokens or response_tokens_est,
                 # Growth and overflow visibility.
                 "history_tokens_after": history_tokens_after,
+                "history_compacted": compaction_meta["history_compacted"],
+                "history_tokens_before_compaction": compaction_meta["history_tokens_before_compaction"],
+                "history_tokens_after_compaction": compaction_meta["history_tokens_after_compaction"],
                 "conversation_total_tokens": int(stats["total_tokens_total"]),
-                "conversation_total_cost_usd": round(float(stats["cost_usd_total"]), 6),
+                "conversation_total_cost_rub": round(float(stats["cost_rub_total"]), 6),
                 "conversation_turns": int(stats["turns"]),
                 "model_context_limit_tokens": context_limit,
                 "prompt_usage_percent": round(
-                    (projected_prompt_tokens / context_limit) * 100, 2
+                    (prompt_for_limit / context_limit) * 100, 2
                 ),
-                "request_payload_bytes": estimated_payload_bytes,
-                "payload_limit_bytes": payload_limit,
-                "payload_usage_percent": round(
-                    (estimated_payload_bytes / payload_limit) * 100, 2
-                ),
-                "estimated": True,
+                "estimated": prompt_tokens == 0,
             }
             yield StreamResult(meta=enriched_meta)

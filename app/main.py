@@ -10,7 +10,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agent import SimpleChatAgent
-from .providers import AIProvider, GroqProvider
+from .providers import AIProvider, RouterAIProvider
 
 load_dotenv()
 
@@ -21,8 +21,8 @@ MEMORY_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_memory.js
 
 providers: dict[str, AIProvider] = {}
 
-if key := os.getenv("GROQ_API_KEY"):
-    providers["groq"] = GroqProvider(key)
+if key := os.getenv("ROUTERAI_API_KEY"):
+    providers["routerai"] = RouterAIProvider(key)
 
 agent = SimpleChatAgent(providers, memory_path=MEMORY_PATH)
 
