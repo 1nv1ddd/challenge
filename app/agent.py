@@ -13,6 +13,9 @@ MODEL_CONTEXT_LIMITS = {
 INPUT_PRICE_RUB_PER_MILLION = 15.0
 OUTPUT_PRICE_RUB_PER_MILLION = 63.0
 
+KEEP_LAST_MESSAGES = 12
+SUMMARIZE_BATCH_MESSAGES = 10
+
 
 class SimpleChatAgent:
     """Encapsulates chat request/response logic for LLM providers."""
@@ -43,18 +46,29 @@ class SimpleChatAgent:
 
             normalized: dict[str, dict] = {}
             for conv_id, conv_data in data.items():
-                # Backward compatibility with old format: {conv_id: [messages...]}
+                # Legacy format: {conv_id: [messages...]}
                 if isinstance(conv_data, list):
                     normalized[conv_id] = {
-                        "messages": conv_data,
+                        "recent_messages": conv_data,
+                        "summary": "",
+                        "summary_source_messages": 0,
+                        "summary_source_tokens_est": 0,
                         "stats": self._empty_stats(),
                     }
                     continue
+
                 if isinstance(conv_data, dict):
-                    messages = conv_data.get("messages", [])
+                    # Old format used "messages"; new uses "recent_messages".
+                    recent = conv_data.get("recent_messages", conv_data.get("messages", []))
+                    summary = conv_data.get("summary", "")
+                    summary_source_messages = int(conv_data.get("summary_source_messages", 0))
+                    summary_source_tokens_est = int(conv_data.get("summary_source_tokens_est", 0))
                     stats = conv_data.get("stats", {})
                     normalized[conv_id] = {
-                        "messages": messages if isinstance(messages, list) else [],
+                        "recent_messages": recent if isinstance(recent, list) else [],
+                        "summary": summary if isinstance(summary, str) else "",
+                        "summary_source_messages": max(0, summary_source_messages),
+                        "summary_source_tokens_est": max(0, summary_source_tokens_est),
                         "stats": self._normalize_stats(stats),
                     }
             self.state_by_conversation = normalized
@@ -103,7 +117,10 @@ class SimpleChatAgent:
     def _get_conversation_state(self, conversation_id: str) -> dict:
         if conversation_id not in self.state_by_conversation:
             self.state_by_conversation[conversation_id] = {
-                "messages": [],
+                "recent_messages": [],
+                "summary": "",
+                "summary_source_messages": 0,
+                "summary_source_tokens_est": 0,
                 "stats": self._empty_stats(),
             }
         return self.state_by_conversation[conversation_id]
@@ -143,103 +160,160 @@ class SimpleChatAgent:
     def _estimate_tokens_messages(self, messages: list[Message]) -> int:
         return sum(self._estimate_tokens_text(msg.content) for msg in messages)
 
-    def _summarize_history(
-        self,
-        messages: list[Message],
-        max_items: int = 60,
-        max_chars_per_item: int = 200,
-    ) -> str:
-        """Build a compact deterministic summary without extra LLM call."""
-        if not messages:
-            return "Диалог пока пуст."
-
+    def _summarize_chunk(self, messages: list[Message], max_chars_per_item: int = 180) -> str:
+        """Deterministic cheap summary for a chunk of messages."""
         lines: list[str] = []
-        start = max(0, len(messages) - max_items)
-        for msg in messages[start:]:
+        for msg in messages:
             role = "Пользователь" if msg.role == "user" else "Ассистент"
             content = " ".join(msg.content.split())
             if len(content) > max_chars_per_item:
                 content = content[: max_chars_per_item - 1] + "…"
             lines.append(f"- {role}: {content}")
+        return "\n".join(lines)
 
-        return (
-            "Сводка предыдущего диалога (сжато):\n"
-            + "\n".join(lines)
-            + "\nИспользуй это как контекст и продолжай диалог."
-        )
+    def _merge_summary(self, old_summary: str, chunk_messages: list[Message]) -> str:
+        chunk_summary = self._summarize_chunk(chunk_messages)
+        if old_summary.strip():
+            merged = old_summary.strip() + "\n" + chunk_summary
+        else:
+            merged = chunk_summary
+        # Keep summary bounded in size.
+        max_chars = 12000
+        if len(merged) > max_chars:
+            merged = "…\n" + merged[-max_chars:]
+        return merged
 
-    def _fit_history_into_context(
+    def _compress_state_history(self, state: dict) -> bool:
+        """Keep latest N raw messages; move older messages into summary every 10 messages."""
+        recent = self._normalize_messages(state.get("recent_messages", []))
+        if len(recent) <= KEEP_LAST_MESSAGES:
+            state["recent_messages"] = [{"role": m.role, "content": m.content} for m in recent]
+            return False
+
+        changed = False
+        while len(recent) > KEEP_LAST_MESSAGES:
+            overflow = len(recent) - KEEP_LAST_MESSAGES
+            take = min(SUMMARIZE_BATCH_MESSAGES, overflow)
+            chunk = recent[:take]
+            recent = recent[take:]
+
+            state["summary"] = self._merge_summary(state.get("summary", ""), chunk)
+            state["summary_source_messages"] = int(state.get("summary_source_messages", 0)) + len(chunk)
+            state["summary_source_tokens_est"] = int(state.get("summary_source_tokens_est", 0)) + self._estimate_tokens_messages(chunk)
+            changed = True
+
+        state["recent_messages"] = [{"role": m.role, "content": m.content} for m in recent]
+        return changed
+
+    def _build_request_messages(
         self,
-        stored_history: list[Message],
+        model: str,
+        state: dict,
         incoming_messages: list[Message],
         context_limit: int,
     ) -> tuple[list[Message], dict]:
-        """Compress history when context would overflow."""
-        if not incoming_messages:
-            return stored_history, {
-                "history_compacted": False,
-                "history_tokens_before_compaction": self._estimate_tokens_messages(stored_history),
-                "history_tokens_after_compaction": self._estimate_tokens_messages(stored_history),
+        recent_history = self._normalize_messages(state.get("recent_messages", []))
+        summary_text = state.get("summary", "").strip()
+        summary_msg_tokens = self._estimate_tokens_text(summary_text) if summary_text else 0
+
+        if len(incoming_messages) != 1 or incoming_messages[0].role != "user":
+            # Fallback for non-chat payloads from clients.
+            fallback_messages = incoming_messages
+            fallback_tokens = self._estimate_tokens_messages(fallback_messages)
+            return fallback_messages, {
+                "summary_used": bool(summary_text),
+                "summary_tokens": summary_msg_tokens,
+                "recent_history_tokens": self._estimate_tokens_messages(recent_history),
+                "history_tokens": summary_msg_tokens + self._estimate_tokens_messages(recent_history),
+                "prompt_tokens_with_compression_est": fallback_tokens,
+                "prompt_tokens_no_compression_est": fallback_tokens,
+                "saved_tokens_est": 0,
             }
 
-        original_history_tokens = self._estimate_tokens_messages(stored_history)
-        keep_tail = 8
-        summary_max_items = 80
-        summary_item_chars = 220
-        compacted = False
+        current_user = incoming_messages[0]
+        current_request_tokens = self._estimate_tokens_messages([current_user])
+        recent_tokens = self._estimate_tokens_messages(recent_history)
+        source_tokens = int(state.get("summary_source_tokens_est", 0))
 
-        while True:
-            candidate_history = stored_history
-            if stored_history:
-                tail = stored_history[-keep_tail:] if keep_tail > 0 else []
-                older = stored_history[:-keep_tail] if keep_tail > 0 else stored_history
-                if older:
-                    summary_text = self._summarize_history(
-                        older,
-                        max_items=summary_max_items,
-                        max_chars_per_item=summary_item_chars,
-                    )
-                    summary_message = Message(
+        request_messages: list[Message] = []
+        if summary_text:
+            request_messages.append(
+                Message(
+                    role="system",
+                    content=(
+                        "Краткая сводка прошлой части диалога:\n"
+                        f"{summary_text}\n"
+                        "Используй эту сводку как контекст и продолжай разговор."
+                    ),
+                )
+            )
+        request_messages.extend(recent_history)
+        request_messages.append(current_user)
+
+        compressed_prompt_tokens = summary_msg_tokens + recent_tokens + current_request_tokens
+        uncompressed_prompt_tokens = source_tokens + recent_tokens + current_request_tokens
+        saved_tokens = max(0, uncompressed_prompt_tokens - compressed_prompt_tokens)
+
+        if compressed_prompt_tokens > context_limit:
+            # Force extra compaction of recent history into summary until it fits.
+            temp_state = {
+                "recent_messages": [{"role": m.role, "content": m.content} for m in recent_history],
+                "summary": summary_text,
+                "summary_source_messages": int(state.get("summary_source_messages", 0)),
+                "summary_source_tokens_est": source_tokens,
+            }
+            while compressed_prompt_tokens > context_limit and len(temp_state["recent_messages"]) > 2:
+                extra_take = min(SUMMARIZE_BATCH_MESSAGES, len(temp_state["recent_messages"]) - 2)
+                chunk = self._normalize_messages(temp_state["recent_messages"][:extra_take])
+                temp_state["recent_messages"] = temp_state["recent_messages"][extra_take:]
+                temp_state["summary"] = self._merge_summary(temp_state.get("summary", ""), chunk)
+                temp_state["summary_source_messages"] += len(chunk)
+                temp_state["summary_source_tokens_est"] += self._estimate_tokens_messages(chunk)
+
+                recent_history = self._normalize_messages(temp_state["recent_messages"])
+                summary_text = temp_state["summary"]
+                summary_msg_tokens = self._estimate_tokens_text(summary_text)
+                recent_tokens = self._estimate_tokens_messages(recent_history)
+                source_tokens = int(temp_state["summary_source_tokens_est"])
+                compressed_prompt_tokens = summary_msg_tokens + recent_tokens + current_request_tokens
+                uncompressed_prompt_tokens = source_tokens + recent_tokens + current_request_tokens
+                saved_tokens = max(0, uncompressed_prompt_tokens - compressed_prompt_tokens)
+
+            state["recent_messages"] = temp_state["recent_messages"]
+            state["summary"] = temp_state["summary"]
+            state["summary_source_messages"] = temp_state["summary_source_messages"]
+            state["summary_source_tokens_est"] = temp_state["summary_source_tokens_est"]
+
+            request_messages = []
+            if summary_text:
+                request_messages.append(
+                    Message(
                         role="system",
-                        content=summary_text,
+                        content=(
+                            "Краткая сводка прошлой части диалога:\n"
+                            f"{summary_text}\n"
+                            "Используй эту сводку как контекст и продолжай разговор."
+                        ),
                     )
-                    candidate_history = [summary_message, *tail]
-                    compacted = True
+                )
+            request_messages.extend(recent_history)
+            request_messages.append(current_user)
 
-            candidate_tokens = self._estimate_tokens_messages(candidate_history + incoming_messages)
-            if candidate_tokens <= context_limit:
-                return candidate_history, {
-                    "history_compacted": compacted,
-                    "history_tokens_before_compaction": original_history_tokens,
-                    "history_tokens_after_compaction": self._estimate_tokens_messages(candidate_history),
-                }
-
-            # Tighten compaction progressively.
-            if keep_tail > 2:
-                keep_tail = max(2, keep_tail - 2)
-                summary_max_items = max(20, summary_max_items - 15)
-                summary_item_chars = max(120, summary_item_chars - 20)
-                continue
-
-            # Last resort: only short system summary.
-            summary_text = self._summarize_history(
-                stored_history,
-                max_items=20,
-                max_chars_per_item=120,
-            )
-            candidate_history = [Message(role="system", content=summary_text)]
-            candidate_tokens = self._estimate_tokens_messages(candidate_history + incoming_messages)
-            if candidate_tokens <= context_limit:
-                return candidate_history, {
-                    "history_compacted": True,
-                    "history_tokens_before_compaction": original_history_tokens,
-                    "history_tokens_after_compaction": self._estimate_tokens_messages(candidate_history),
-                }
-
+        if compressed_prompt_tokens > context_limit:
             raise ValueError(
-                f"Context overflow: unable to compact history under limit {context_limit}. "
-                "Start a new chat."
+                f"Context overflow: estimated {compressed_prompt_tokens} tokens exceeds "
+                f"limit {context_limit} for model '{model}'"
             )
+
+        return request_messages, {
+            "summary_used": bool(summary_text),
+            "summary_tokens": summary_msg_tokens,
+            "recent_history_tokens": recent_tokens,
+            "history_tokens": summary_msg_tokens + recent_tokens,
+            "prompt_tokens_with_compression_est": compressed_prompt_tokens,
+            "prompt_tokens_no_compression_est": uncompressed_prompt_tokens,
+            "saved_tokens_est": saved_tokens,
+        }
 
     async def stream_reply(
         self,
@@ -257,40 +331,16 @@ class SimpleChatAgent:
         if not incoming_messages:
             raise ValueError("No valid messages to send")
 
-        conversation_state = self._get_conversation_state(conversation_id)
-        stored_history = self._normalize_messages(conversation_state["messages"])
-        history_tokens_before = self._estimate_tokens_messages(stored_history)
-        current_request_tokens = self._estimate_tokens_messages(incoming_messages)
+        state = self._get_conversation_state(conversation_id)
+        self._compress_state_history(state)
 
-        # Common case for chat UI: one new user message per request.
-        if len(incoming_messages) == 1 and incoming_messages[0].role == "user":
-            request_messages = [*stored_history, incoming_messages[0]]
-        else:
-            # Fallback mode: allow full sync payloads.
-            request_messages = incoming_messages
-
-        context_limit = MODEL_CONTEXT_LIMITS.get(model, 164000)
-        projected_prompt_tokens = history_tokens_before + current_request_tokens
-        compaction_meta = {
-            "history_compacted": False,
-            "history_tokens_before_compaction": history_tokens_before,
-            "history_tokens_after_compaction": history_tokens_before,
-        }
-        if projected_prompt_tokens > context_limit and len(incoming_messages) == 1:
-            fitted_history, compaction_meta = self._fit_history_into_context(
-                stored_history=stored_history,
-                incoming_messages=incoming_messages,
-                context_limit=context_limit,
-            )
-            request_messages = [*fitted_history, incoming_messages[0]]
-            history_tokens_before = self._estimate_tokens_messages(fitted_history)
-            projected_prompt_tokens = history_tokens_before + current_request_tokens
-
-        if projected_prompt_tokens > context_limit:
-            raise ValueError(
-                f"Context overflow: estimated {projected_prompt_tokens} tokens exceeds "
-                f"limit {context_limit} for model '{model}'"
-            )
+        context_limit = MODEL_CONTEXT_LIMITS.get(model, 128000)
+        request_messages, compression_meta = self._build_request_messages(
+            model=model,
+            state=state,
+            incoming_messages=incoming_messages,
+            context_limit=context_limit,
+        )
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
@@ -305,57 +355,61 @@ class SimpleChatAgent:
                 provider_meta = result.meta
 
         assistant_text = "".join(assistant_chunks)
-        if assistant_text:
-            next_history = [
-                *request_messages,
-                Message(role="assistant", content=assistant_text),
-            ]
-            conversation_state["messages"] = [
-                {"role": msg.role, "content": msg.content} for msg in next_history
-            ]
-            response_tokens_est = self._estimate_tokens_text(assistant_text)
-            history_tokens_after = self._estimate_tokens_messages(next_history)
+        if not assistant_text:
+            return
 
-            prompt_tokens = int((provider_meta or {}).get("prompt_tokens", 0))
-            completion_tokens = int((provider_meta or {}).get("completion_tokens", 0))
-            total_tokens = int((provider_meta or {}).get("total_tokens", 0))
-            request_cost_rub = (
-                prompt_tokens * INPUT_PRICE_RUB_PER_MILLION
-                + completion_tokens * OUTPUT_PRICE_RUB_PER_MILLION
-            ) / 1_000_000
-            prompt_for_limit = prompt_tokens if prompt_tokens > 0 else projected_prompt_tokens
+        recent_history = self._normalize_messages(state.get("recent_messages", []))
+        next_recent = [*recent_history, incoming_messages[-1], Message(role="assistant", content=assistant_text)]
+        state["recent_messages"] = [{"role": m.role, "content": m.content} for m in next_recent]
+        self._compress_state_history(state)
 
-            stats = conversation_state["stats"]
-            stats["turns"] += 1
-            stats["prompt_tokens_total"] += prompt_tokens
-            stats["completion_tokens_total"] += completion_tokens
-            stats["total_tokens_total"] += total_tokens
-            stats["cost_rub_total"] += request_cost_rub
-            self._save_history()
+        response_tokens_est = self._estimate_tokens_text(assistant_text)
 
-            enriched_meta = {
-                # Existing fields preserved for backward compatibility.
-                "time_ms": int((provider_meta or {}).get("time_ms", 0)),
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": total_tokens,
-                "cost_rub": round(request_cost_rub, 6),
-                # Requested token counters.
-                "current_request_tokens": current_request_tokens,
-                "history_tokens": history_tokens_before,
-                "response_tokens": completion_tokens or response_tokens_est,
-                # Growth and overflow visibility.
-                "history_tokens_after": history_tokens_after,
-                "history_compacted": compaction_meta["history_compacted"],
-                "history_tokens_before_compaction": compaction_meta["history_tokens_before_compaction"],
-                "history_tokens_after_compaction": compaction_meta["history_tokens_after_compaction"],
-                "conversation_total_tokens": int(stats["total_tokens_total"]),
-                "conversation_total_cost_rub": round(float(stats["cost_rub_total"]), 6),
-                "conversation_turns": int(stats["turns"]),
-                "model_context_limit_tokens": context_limit,
-                "prompt_usage_percent": round(
-                    (prompt_for_limit / context_limit) * 100, 2
-                ),
-                "estimated": prompt_tokens == 0,
-            }
-            yield StreamResult(meta=enriched_meta)
+        prompt_tokens = int((provider_meta or {}).get("prompt_tokens", 0))
+        completion_tokens = int((provider_meta or {}).get("completion_tokens", 0))
+        total_tokens = int((provider_meta or {}).get("total_tokens", 0))
+        request_cost_rub = (
+            prompt_tokens * INPUT_PRICE_RUB_PER_MILLION
+            + completion_tokens * OUTPUT_PRICE_RUB_PER_MILLION
+        ) / 1_000_000
+
+        stats = state["stats"]
+        stats["turns"] += 1
+        stats["prompt_tokens_total"] += prompt_tokens
+        stats["completion_tokens_total"] += completion_tokens
+        stats["total_tokens_total"] += total_tokens
+        stats["cost_rub_total"] += request_cost_rub
+        self._save_history()
+
+        prompt_for_limit = (
+            prompt_tokens
+            if prompt_tokens > 0
+            else int(compression_meta["prompt_tokens_with_compression_est"])
+        )
+        prompt_pct = round((prompt_for_limit / context_limit) * 100, 2)
+
+        enriched_meta = {
+            "time_ms": int((provider_meta or {}).get("time_ms", 0)),
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "cost_rub": round(request_cost_rub, 6),
+            "current_request_tokens": self._estimate_tokens_messages(incoming_messages),
+            "history_tokens": int(compression_meta["history_tokens"]),
+            "response_tokens": completion_tokens or response_tokens_est,
+            "conversation_total_tokens": int(stats["total_tokens_total"]),
+            "conversation_total_cost_rub": round(float(stats["cost_rub_total"]), 6),
+            "conversation_turns": int(stats["turns"]),
+            "model_context_limit_tokens": context_limit,
+            "prompt_usage_percent": prompt_pct,
+            # Compression-related metrics.
+            "summary_used": bool(compression_meta["summary_used"]),
+            "summary_tokens": int(compression_meta["summary_tokens"]),
+            "recent_history_tokens": int(compression_meta["recent_history_tokens"]),
+            "prompt_tokens_no_compression_est": int(compression_meta["prompt_tokens_no_compression_est"]),
+            "prompt_tokens_with_compression_est": int(compression_meta["prompt_tokens_with_compression_est"]),
+            "saved_tokens_est": int(compression_meta["saved_tokens_est"]),
+            "compressed_messages_count": int(state.get("summary_source_messages", 0)),
+            "estimated": prompt_tokens == 0,
+        }
+        yield StreamResult(meta=enriched_meta)

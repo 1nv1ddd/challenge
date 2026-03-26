@@ -737,8 +737,11 @@ function buildMetaHTML(meta) {
       </div>
     </div>
   `;
-  const compactInfo = meta.history_compacted
-    ? `<div class="meta-item">Суммаризация: <span class="meta-val">включена</span> (${meta.history_tokens_before_compaction} → ${meta.history_tokens_after_compaction} ток.)</div>`
+  const summaryInfo = meta.summary_used
+    ? `<div class="meta-item">Summary: <span class="meta-val">включен</span> (сжато сообщений: ${meta.compressed_messages_count ?? 0})</div>`
+    : '<div class="meta-item">Summary: <span class="meta-val">нет</span></div>';
+  const compressionInfo = (meta.prompt_tokens_no_compression_est !== undefined && meta.prompt_tokens_with_compression_est !== undefined)
+    ? `<div class="meta-item">Промпт без/со сжатием: <span class="meta-val">${meta.prompt_tokens_no_compression_est} / ${meta.prompt_tokens_with_compression_est}</span> (экономия: ${meta.saved_tokens_est ?? 0} ток.)</div>`
     : '';
   return `
     <div class="msg-meta">
@@ -746,10 +749,13 @@ function buildMetaHTML(meta) {
       <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
       <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
       <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
+      <div class="meta-item">Summary токены: <span class="meta-val">${meta.summary_tokens ?? 0}</span> ток.</div>
+      <div class="meta-item">Recent токены: <span class="meta-val">${meta.recent_history_tokens ?? 0}</span> ток.</div>
       <div class="meta-item">Ответ модели: <span class="meta-val">${meta.response_tokens ?? meta.completion_tokens}</span> ток.</div>
       <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
-      ${compactInfo}
+      ${summaryInfo}
+      ${compressionInfo}
       <div class="meta-item">Стоимость запроса: <span class="meta-val">${costStr}</span></div>
       <div class="meta-item">Стоимость диалога: <span class="meta-val">${totalCostStr}</span></div>
       <div class="meta-item">Токены диалога (API): <span class="meta-val">${meta.conversation_total_tokens ?? '-'}</span></div>
