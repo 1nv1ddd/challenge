@@ -49,6 +49,7 @@ class SimpleChatAgent:
                 # Legacy format: {conv_id: [messages...]}
                 if isinstance(conv_data, list):
                     normalized[conv_id] = {
+                        "full_messages": conv_data,
                         "recent_messages": conv_data,
                         "summary": "",
                         "summary_source_messages": 0,
@@ -59,12 +60,16 @@ class SimpleChatAgent:
 
                 if isinstance(conv_data, dict):
                     # Old format used "messages"; new uses "recent_messages".
+                    full_messages = conv_data.get("full_messages")
                     recent = conv_data.get("recent_messages", conv_data.get("messages", []))
                     summary = conv_data.get("summary", "")
                     summary_source_messages = int(conv_data.get("summary_source_messages", 0))
                     summary_source_tokens_est = int(conv_data.get("summary_source_tokens_est", 0))
                     stats = conv_data.get("stats", {})
+                    if not isinstance(full_messages, list):
+                        full_messages = recent if isinstance(recent, list) else []
                     normalized[conv_id] = {
+                        "full_messages": full_messages if isinstance(full_messages, list) else [],
                         "recent_messages": recent if isinstance(recent, list) else [],
                         "summary": summary if isinstance(summary, str) else "",
                         "summary_source_messages": max(0, summary_source_messages),
@@ -117,6 +122,7 @@ class SimpleChatAgent:
     def _get_conversation_state(self, conversation_id: str) -> dict:
         if conversation_id not in self.state_by_conversation:
             self.state_by_conversation[conversation_id] = {
+                "full_messages": [],
                 "recent_messages": [],
                 "summary": "",
                 "summary_source_messages": 0,
@@ -211,8 +217,10 @@ class SimpleChatAgent:
         state: dict,
         incoming_messages: list[Message],
         context_limit: int,
+        compression_enabled: bool,
     ) -> tuple[list[Message], dict]:
         recent_history = self._normalize_messages(state.get("recent_messages", []))
+        full_history = self._normalize_messages(state.get("full_messages", []))
         summary_text = state.get("summary", "").strip()
         summary_msg_tokens = self._estimate_tokens_text(summary_text) if summary_text else 0
 
@@ -228,12 +236,33 @@ class SimpleChatAgent:
                 "prompt_tokens_with_compression_est": fallback_tokens,
                 "prompt_tokens_no_compression_est": fallback_tokens,
                 "saved_tokens_est": 0,
+                "compression_enabled": compression_enabled,
             }
 
         current_user = incoming_messages[0]
         current_request_tokens = self._estimate_tokens_messages([current_user])
         recent_tokens = self._estimate_tokens_messages(recent_history)
+        full_tokens = self._estimate_tokens_messages(full_history)
         source_tokens = int(state.get("summary_source_tokens_est", 0))
+
+        if not compression_enabled:
+            request_messages = [*full_history, current_user]
+            projected_tokens = full_tokens + current_request_tokens
+            if projected_tokens > context_limit:
+                raise ValueError(
+                    f"Context overflow: estimated {projected_tokens} tokens exceeds "
+                    f"limit {context_limit} for model '{model}'"
+                )
+            return request_messages, {
+                "summary_used": False,
+                "summary_tokens": 0,
+                "recent_history_tokens": recent_tokens,
+                "history_tokens": full_tokens,
+                "prompt_tokens_with_compression_est": projected_tokens,
+                "prompt_tokens_no_compression_est": projected_tokens,
+                "saved_tokens_est": 0,
+                "compression_enabled": False,
+            }
 
         request_messages: list[Message] = []
         if summary_text:
@@ -313,6 +342,7 @@ class SimpleChatAgent:
             "prompt_tokens_with_compression_est": compressed_prompt_tokens,
             "prompt_tokens_no_compression_est": uncompressed_prompt_tokens,
             "saved_tokens_est": saved_tokens,
+            "compression_enabled": True,
         }
 
     async def stream_reply(
@@ -322,6 +352,7 @@ class SimpleChatAgent:
         conversation_id: str,
         raw_messages: list[dict],
         temperature: float = 0.7,
+        compression_enabled: bool = True,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
@@ -340,6 +371,7 @@ class SimpleChatAgent:
             state=state,
             incoming_messages=incoming_messages,
             context_limit=context_limit,
+            compression_enabled=compression_enabled,
         )
 
         assistant_chunks: list[str] = []
@@ -357,6 +389,10 @@ class SimpleChatAgent:
         assistant_text = "".join(assistant_chunks)
         if not assistant_text:
             return
+
+        full_history = self._normalize_messages(state.get("full_messages", []))
+        next_full = [*full_history, incoming_messages[-1], Message(role="assistant", content=assistant_text)]
+        state["full_messages"] = [{"role": m.role, "content": m.content} for m in next_full]
 
         recent_history = self._normalize_messages(state.get("recent_messages", []))
         next_recent = [*recent_history, incoming_messages[-1], Message(role="assistant", content=assistant_text)]
@@ -410,6 +446,7 @@ class SimpleChatAgent:
             "prompt_tokens_with_compression_est": int(compression_meta["prompt_tokens_with_compression_est"]),
             "saved_tokens_est": int(compression_meta["saved_tokens_est"]),
             "compressed_messages_count": int(state.get("summary_source_messages", 0)),
+            "compression_enabled": bool(compression_meta["compression_enabled"]),
             "estimated": prompt_tokens == 0,
         }
         yield StreamResult(meta=enriched_meta)

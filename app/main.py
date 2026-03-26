@@ -41,6 +41,7 @@ async def chat(request: Request):
     conversation_id: str = body.get("conversation_id", "default")
     raw_messages: list[dict] = body.get("messages", [])
     temperature: float = body.get("temperature", 0.7)
+    compression_enabled: bool = bool(body.get("compression_enabled", True))
 
     async def event_stream():
         try:
@@ -50,6 +51,7 @@ async def chat(request: Request):
                 conversation_id=conversation_id,
                 raw_messages=raw_messages,
                 temperature=temperature,
+                compression_enabled=compression_enabled,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
