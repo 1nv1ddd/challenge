@@ -41,7 +41,8 @@ async def chat(request: Request):
     conversation_id: str = body.get("conversation_id", "default")
     raw_messages: list[dict] = body.get("messages", [])
     temperature: float = body.get("temperature", 0.7)
-    compression_enabled: bool = bool(body.get("compression_enabled", True))
+    context_strategy: str = body.get("context_strategy", "sliding")
+    branch_id: str = body.get("branch_id", "main")
 
     async def event_stream():
         try:
@@ -51,7 +52,8 @@ async def chat(request: Request):
                 conversation_id=conversation_id,
                 raw_messages=raw_messages,
                 temperature=temperature,
-                compression_enabled=compression_enabled,
+                context_strategy=context_strategy,
+                branch_id=branch_id,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
@@ -68,6 +70,34 @@ async def chat(request: Request):
             yield f"data: [ERROR] {msg}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/api/branches")
+async def list_branches(conversation_id: str):
+    return agent.list_branches(conversation_id)
+
+
+@app.post("/api/checkpoints")
+async def create_checkpoint(request: Request):
+    body = await request.json()
+    conversation_id: str = body.get("conversation_id", "default")
+    branch_id: str = body.get("branch_id", "main")
+    return agent.create_checkpoint(conversation_id=conversation_id, branch_id=branch_id)
+
+
+@app.post("/api/branches")
+async def create_branch(request: Request):
+    body = await request.json()
+    conversation_id: str = body.get("conversation_id", "default")
+    checkpoint_id: str = body.get("checkpoint_id", "")
+    branch_name: str | None = body.get("branch_name")
+    if not checkpoint_id:
+        return {"error": "checkpoint_id is required"}
+    return agent.create_branch(
+        conversation_id=conversation_id,
+        checkpoint_id=checkpoint_id,
+        branch_name=branch_name,
+    )
 
 
 @app.get("/", response_class=HTMLResponse)

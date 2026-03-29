@@ -573,11 +573,22 @@
           </div>
         </div>
         <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
-          <div class="c-label">Сжатие истории</div>
-          <label style="display:flex; gap:8px; align-items:center; color:var(--text-primary); cursor:pointer;">
-            <input type="checkbox" id="compressionToggle" checked />
-            <span>Включать summary каждые 10 сообщений</span>
-          </label>
+          <div class="c-label">Стратегия контекста</div>
+          <select class="c-input" id="contextStrategy">
+            <option value="sliding">Sliding Window</option>
+            <option value="facts">Sticky Facts (Key-Value)</option>
+            <option value="branching">Branching</option>
+          </select>
+        </div>
+        <div class="c-row" id="branchRow" style="display:none; border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
+          <div class="c-label">Ветки</div>
+          <div style="display:grid; gap:8px;">
+            <select class="c-input" id="branchSelect"></select>
+            <div style="display:flex; gap:8px;">
+              <button type="button" id="checkpointBtn">Checkpoint</button>
+              <button type="button" id="createBranchesBtn">2 ветки</button>
+            </div>
+          </div>
         </div>
       </div>
       <div class="input-wrapper">
@@ -653,6 +664,10 @@ function createChat() {
     title: 'Новый чат',
     provider: providerName,
     model: modelSel.value,
+    contextStrategy: 'sliding',
+    branchId: 'main',
+    latestCheckpointId: null,
+    branches: [{ id: 'main', name: 'main', message_count: 0 }],
     messages: [],
   };
   chats.unshift(chat);
@@ -678,7 +693,16 @@ function selectChat(id) {
   const chat = getChat(id);
   if (!chat) return;
 
+  if (!chat.contextStrategy) chat.contextStrategy = 'sliding';
+  if (!chat.branchId) chat.branchId = 'main';
+  if (!Array.isArray(chat.branches)) {
+    chat.branches = [{ id: 'main', name: 'main', message_count: 0 }];
+  }
+
   modelSel.value = chat.model;
+  contextStrategy.value = chat.contextStrategy;
+  renderBranchControls(chat);
+  if (chat.contextStrategy === 'branching') refreshBranches(chat);
 
   renderChatsList();
   renderMessages(chat.messages);
@@ -747,9 +771,12 @@ function buildMetaHTML(meta) {
   const summaryInfo = meta.summary_used
     ? `<div class="meta-item">Summary: <span class="meta-val">включен</span> (сжато сообщений: ${meta.compressed_messages_count ?? 0})</div>`
     : '<div class="meta-item">Summary: <span class="meta-val">нет</span></div>';
-  const modeInfo = meta.compression_enabled === false
-    ? '<div class="meta-item">Режим: <span class="meta-val">без сжатия</span></div>'
-    : '<div class="meta-item">Режим: <span class="meta-val">со сжатием</span></div>';
+  const strategyLabel = meta.context_strategy === 'facts'
+    ? 'Sticky Facts'
+    : meta.context_strategy === 'branching'
+      ? `Branching (${meta.branch_id || 'main'})`
+      : 'Sliding Window';
+  const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
   const compressionInfo = (meta.prompt_tokens_no_compression_est !== undefined && meta.prompt_tokens_with_compression_est !== undefined)
     ? `<div class="meta-item">Промпт без/со сжатием: <span class="meta-val">${meta.prompt_tokens_no_compression_est} / ${meta.prompt_tokens_with_compression_est}</span> (экономия: ${meta.saved_tokens_est ?? 0} ток.)</div>`
     : '';
@@ -759,7 +786,7 @@ function buildMetaHTML(meta) {
       <div class="meta-item">Время: <span class="meta-val">${timeSec}s</span></div>
       <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
       <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
-      <div class="meta-item">Summary токены: <span class="meta-val">${meta.summary_tokens ?? 0}</span> ток.</div>
+      <div class="meta-item">Facts: <span class="meta-val">${meta.facts_count ?? 0}</span></div>
       <div class="meta-item">Recent токены: <span class="meta-val">${meta.recent_history_tokens ?? 0}</span> ток.</div>
       <div class="meta-item">Ответ модели: <span class="meta-val">${meta.response_tokens ?? meta.completion_tokens}</span> ток.</div>
       <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
@@ -810,10 +837,11 @@ const cStop = $('#cStop');
 const tempSlider = $('#tempSlider');
 const tempValue = $('#tempValue');
 const tempPresets = document.querySelectorAll('.temp-presets button');
-const compressionToggle = $('#compressionToggle');
-
-const storedCompression = localStorage.getItem('aichat_compression_enabled');
-if (storedCompression !== null) compressionToggle.checked = storedCompression === '1';
+const contextStrategy = $('#contextStrategy');
+const branchRow = $('#branchRow');
+const branchSelect = $('#branchSelect');
+const checkpointBtn = $('#checkpointBtn');
+const createBranchesBtn = $('#createBranchesBtn');
 
 constraintsBtn.addEventListener('click', () => {
   constraintsPanel.classList.toggle('open');
@@ -827,10 +855,6 @@ function getSystemPrompt() {
 
 function getTemperature() {
   return parseFloat(tempSlider.value);
-}
-
-function isCompressionEnabled() {
-  return !!compressionToggle.checked;
 }
 
 function updateTempPresetHighlight() {
@@ -854,13 +878,122 @@ tempPresets.forEach(btn => {
 });
 
 function updateConstraintIndicator() {
-  const hasConstraints = getSystemPrompt().length > 0 || getTemperature() !== 0.7 || !isCompressionEnabled();
+  const hasConstraints = getSystemPrompt().length > 0 || getTemperature() !== 0.7;
   constraintsBtn.classList.toggle('active', hasConstraints);
 }
 [cFormat, cLength, cStop].forEach(el => el.addEventListener('input', updateConstraintIndicator));
-compressionToggle.addEventListener('change', () => {
-  localStorage.setItem('aichat_compression_enabled', isCompressionEnabled() ? '1' : '0');
-  updateConstraintIndicator();
+
+function renderBranchOptions(chat) {
+  const branches = Array.isArray(chat.branches) && chat.branches.length
+    ? chat.branches
+    : [{ id: 'main', name: 'main', message_count: 0 }];
+  chat.branches = branches;
+  if (!branches.some(b => b.id === chat.branchId)) chat.branchId = branches[0].id;
+  branchSelect.innerHTML = branches.map(b => (
+    `<option value="${b.id}">${escapeHtml(b.name || b.id)} (${b.message_count ?? 0})</option>`
+  )).join('');
+  branchSelect.value = chat.branchId;
+}
+
+function renderBranchControls(chat) {
+  const isBranching = (chat.contextStrategy || 'sliding') === 'branching';
+  branchRow.style.display = isBranching ? 'block' : 'none';
+  contextStrategy.value = chat.contextStrategy || 'sliding';
+  if (isBranching) renderBranchOptions(chat);
+}
+
+async function refreshBranches(chat) {
+  try {
+    const resp = await fetch(`/api/branches?conversation_id=${encodeURIComponent(chat.id)}`);
+    const data = await resp.json();
+    if (Array.isArray(data.branches) && data.branches.length) {
+      chat.branches = data.branches;
+      if (!chat.branches.some(b => b.id === chat.branchId)) chat.branchId = chat.branches[0].id;
+      saveChats();
+      renderBranchOptions(chat);
+    }
+  } catch {}
+}
+
+contextStrategy.addEventListener('change', async () => {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  chat.contextStrategy = contextStrategy.value;
+  saveChats();
+  renderBranchControls(chat);
+  if (chat.contextStrategy === 'branching') await refreshBranches(chat);
+});
+
+branchSelect.addEventListener('change', () => {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  chat.branchId = branchSelect.value || 'main';
+  saveChats();
+});
+
+checkpointBtn.addEventListener('click', async () => {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  try {
+    const resp = await fetch('/api/checkpoints', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: chat.id,
+        branch_id: chat.branchId || 'main',
+      }),
+    });
+    const data = await resp.json();
+    if (data.checkpoint_id) {
+      chat.latestCheckpointId = data.checkpoint_id;
+      saveChats();
+    }
+  } catch {}
+});
+
+createBranchesBtn.addEventListener('click', async () => {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  try {
+    if (!chat.latestCheckpointId) {
+      const cpResp = await fetch('/api/checkpoints', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          conversation_id: chat.id,
+          branch_id: chat.branchId || 'main',
+        }),
+      });
+      const cpData = await cpResp.json();
+      if (!cpData.checkpoint_id) return;
+      chat.latestCheckpointId = cpData.checkpoint_id;
+    }
+
+    await fetch('/api/branches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: chat.id,
+        checkpoint_id: chat.latestCheckpointId,
+        branch_name: 'Branch A',
+      }),
+    });
+    await fetch('/api/branches', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: chat.id,
+        checkpoint_id: chat.latestCheckpointId,
+        branch_name: 'Branch B',
+      }),
+    });
+    await refreshBranches(chat);
+    saveChats();
+  } catch {}
 });
 
 // ---- Send ----
@@ -904,7 +1037,8 @@ async function send() {
         conversation_id: chat.id,
         messages: apiMessages,
         temperature: getTemperature(),
-        compression_enabled: isCompressionEnabled(),
+        context_strategy: chat.contextStrategy || 'sliding',
+        branch_id: chat.branchId || 'main',
       }),
     });
     const reader = resp.body.getReader();
