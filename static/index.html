@@ -595,12 +595,18 @@
           <div style="display:grid; gap:8px;">
             <select class="c-input" id="memoryLayerSelect">
               <option value="">Не сохранять</option>
-              <option value="short_term">Краткосрочная (short_term)</option>
               <option value="working_memory">Рабочая (working_memory)</option>
               <option value="long_term">Долговременная (long_term)</option>
             </select>
             <input class="c-input" id="memoryKeyInput" placeholder="Ключ (для working/long), например: project_goal" />
             <input class="c-input" id="memoryValueInput" placeholder="Значение (опц.) — если пусто, сохранится текст сообщения" />
+          </div>
+        </div>
+        <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
+          <div class="c-label">Слои памяти</div>
+          <div style="display:grid; gap:8px;">
+            <button type="button" id="memoryRefreshBtn">Обновить память</button>
+            <pre id="memoryView" style="margin:0; max-height:180px; overflow:auto; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--text-secondary); font-size:12px;">(пока пусто)</pre>
           </div>
         </div>
       </div>
@@ -719,6 +725,7 @@ function selectChat(id) {
 
   renderChatsList();
   renderMessages(chat.messages);
+  refreshMemoryView(chat);
 }
 
 // ---- Render ----
@@ -864,6 +871,8 @@ const createBranchesBtn = $('#createBranchesBtn');
 const memoryLayerSelect = $('#memoryLayerSelect');
 const memoryKeyInput = $('#memoryKeyInput');
 const memoryValueInput = $('#memoryValueInput');
+const memoryRefreshBtn = $('#memoryRefreshBtn');
+const memoryView = $('#memoryView');
 
 constraintsBtn.addEventListener('click', () => {
   constraintsPanel.classList.toggle('open');
@@ -939,6 +948,18 @@ async function refreshBranches(chat) {
   } catch {}
 }
 
+async function refreshMemoryView(chat) {
+  if (!chat) return;
+  try {
+    const url = `/api/memory?conversation_id=${encodeURIComponent(chat.id)}&branch_id=${encodeURIComponent(chat.branchId || 'main')}`;
+    const resp = await fetch(url);
+    const data = await resp.json();
+    memoryView.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    memoryView.textContent = `Ошибка чтения памяти: ${err.message}`;
+  }
+}
+
 contextStrategy.addEventListener('change', async () => {
   if (!activeChatId) return;
   const chat = getChat(activeChatId);
@@ -947,6 +968,7 @@ contextStrategy.addEventListener('change', async () => {
   saveChats();
   renderBranchControls(chat);
   if (chat.contextStrategy === 'branching') await refreshBranches(chat);
+  await refreshMemoryView(chat);
 });
 
 branchSelect.addEventListener('change', () => {
@@ -955,6 +977,7 @@ branchSelect.addEventListener('change', () => {
   if (!chat) return;
   chat.branchId = branchSelect.value || 'main';
   saveChats();
+  refreshMemoryView(chat);
 });
 
 checkpointBtn.addEventListener('click', async () => {
@@ -1017,7 +1040,15 @@ createBranchesBtn.addEventListener('click', async () => {
     });
     await refreshBranches(chat);
     saveChats();
+    await refreshMemoryView(chat);
   } catch {}
+});
+
+memoryRefreshBtn.addEventListener('click', async () => {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  await refreshMemoryView(chat);
 });
 
 // ---- Send ----
@@ -1027,6 +1058,18 @@ async function send() {
 
   if (!activeChatId) createChat();
   const chat = getChat(activeChatId);
+  const selectedLayer = (memoryLayerSelect.value || '').trim();
+  const memorySave = selectedLayer
+    ? {
+        layer: selectedLayer,
+        key: (memoryKeyInput.value || '').trim(),
+        value: (memoryValueInput.value || '').trim(),
+      }
+    : null;
+  if (memorySave && !memorySave.key) {
+    alert('Для working_memory и long_term нужно заполнить поле "Ключ".');
+    return;
+  }
 
   chat.messages.push({ role: 'user', content: text });
   if (chat.messages.length === 1) {
@@ -1048,14 +1091,6 @@ async function send() {
     ? '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + text
     : text;
   const apiMessages = [{ role: 'user', content: userForModel }];
-  const selectedLayer = (memoryLayerSelect.value || '').trim();
-  const memorySave = selectedLayer
-    ? {
-        layer: selectedLayer,
-        key: (memoryKeyInput.value || '').trim(),
-        value: (memoryValueInput.value || '').trim(),
-      }
-    : null;
 
   let full = '';
   let meta = null;
@@ -1126,6 +1161,7 @@ async function send() {
     updateConstraintIndicator();
   }
   saveChats();
+  await refreshMemoryView(chat);
   isStreaming = false;
   sendBtn.disabled = false;
   scrollDown();

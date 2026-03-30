@@ -103,8 +103,8 @@ async def create_branch(request: Request):
 
 
 @app.get("/api/memory")
-async def list_memory(conversation_id: str):
-    return agent.list_memory_layers(conversation_id)
+async def list_memory(conversation_id: str, branch_id: str = "main"):
+    return agent.list_memory_layers(conversation_id, branch_id=branch_id)
 
 
 @app.get("/", response_class=HTMLResponse)
