@@ -15,6 +15,7 @@ INPUT_PRICE_RUB_PER_MILLION = 15.0
 OUTPUT_PRICE_RUB_PER_MILLION = 63.0
 WINDOW_SIZE_MESSAGES = 12
 ALLOWED_STRATEGIES = {"sliding", "facts", "branching"}
+SHORT_TERM_WINDOW = 12
 
 
 class SimpleChatAgent:
@@ -67,6 +68,7 @@ class SimpleChatAgent:
                     }
                 },
                 "checkpoints": {},
+                "memory_layers": self._empty_memory_layers(),
                 "stats": self._empty_stats(),
             }
 
@@ -76,6 +78,7 @@ class SimpleChatAgent:
                 "facts": {},
                 "branches": {"main": {"name": "main", "from_checkpoint": None, "messages": []}},
                 "checkpoints": {},
+                "memory_layers": self._empty_memory_layers(),
                 "stats": self._empty_stats(),
             }
 
@@ -113,12 +116,14 @@ class SimpleChatAgent:
         checkpoints = conv_data.get("checkpoints", {})
         if not isinstance(checkpoints, dict):
             checkpoints = {}
+        memory_layers = self._normalize_memory_layers(conv_data.get("memory_layers", {}))
 
         return {
             "full_messages": full,
             "facts": facts,
             "branches": branches,
             "checkpoints": checkpoints,
+            "memory_layers": memory_layers,
             "stats": self._normalize_stats(conv_data.get("stats", {})),
         }
 
@@ -161,9 +166,45 @@ class SimpleChatAgent:
                 "facts": {},
                 "branches": {"main": {"name": "main", "from_checkpoint": None, "messages": []}},
                 "checkpoints": {},
+                "memory_layers": self._empty_memory_layers(),
                 "stats": self._empty_stats(),
             }
         return self.state_by_conversation[conversation_id]
+
+    @staticmethod
+    def _empty_memory_layers() -> dict:
+        return {
+            "short_term": {"notes": []},
+            "working_memory": {},
+            "long_term": {},
+        }
+
+    def _normalize_memory_layers(self, layers: dict) -> dict:
+        base = self._empty_memory_layers()
+        if not isinstance(layers, dict):
+            return base
+
+        short_term = layers.get("short_term", {})
+        if isinstance(short_term, dict):
+            notes = short_term.get("notes", [])
+            if isinstance(notes, list):
+                base["short_term"]["notes"] = [str(x)[:240] for x in notes[-20:]]
+
+        working = layers.get("working_memory", {})
+        if isinstance(working, dict):
+            for k, v in list(working.items())[-40:]:
+                base["working_memory"][str(k)[:64]] = str(v)[:320]
+
+        long_term = layers.get("long_term", {})
+        if isinstance(long_term, dict):
+            for k, v in list(long_term.items())[-80:]:
+                base["long_term"][str(k)[:64]] = str(v)[:320]
+
+        return base
+
+    def list_memory_layers(self, conversation_id: str) -> dict:
+        state = self._get_conversation_state(conversation_id)
+        return state.get("memory_layers", self._empty_memory_layers())
 
     def list_branches(self, conversation_id: str) -> dict:
         state = self._get_conversation_state(conversation_id)
@@ -191,6 +232,7 @@ class SimpleChatAgent:
             "branch_id": branch_id,
             "full_messages": branch.get("messages", []),
             "facts": dict(state.get("facts", {})),
+            "memory_layers": self._normalize_memory_layers(state.get("memory_layers", {})),
             "created_at": int(time.time()),
         }
         self._save_history()
@@ -295,6 +337,79 @@ class SimpleChatAgent:
             lines.append(f"- {k}: {v}")
         return Message(role="system", content="\n".join(lines))
 
+    def _memory_system_messages(self, state: dict) -> list[Message]:
+        layers = self._normalize_memory_layers(state.get("memory_layers", {}))
+        msgs: list[Message] = []
+
+        short_notes = layers["short_term"]["notes"][-5:]
+        if short_notes:
+            short_lines = ["Short-term notes (recent focus):"]
+            short_lines.extend([f"- {x}" for x in short_notes])
+            msgs.append(Message(role="system", content="\n".join(short_lines)))
+
+        working = layers["working_memory"]
+        if working:
+            work_lines = ["Working memory (current task data):"]
+            for k, v in working.items():
+                work_lines.append(f"- {k}: {v}")
+            msgs.append(Message(role="system", content="\n".join(work_lines)))
+
+        long_term = layers["long_term"]
+        if long_term:
+            long_lines = ["Long-term memory (profile/decisions/knowledge):"]
+            for k, v in long_term.items():
+                long_lines.append(f"- {k}: {v}")
+            msgs.append(Message(role="system", content="\n".join(long_lines)))
+
+        return msgs
+
+    def _apply_explicit_memory_save(
+        self,
+        state: dict,
+        memory_save: dict | None,
+        fallback_text: str,
+    ) -> dict:
+        result = {"saved": False, "layer": None, "key": None}
+        if not isinstance(memory_save, dict):
+            return result
+
+        layer = str(memory_save.get("layer", "")).strip().lower()
+        if layer not in {"short_term", "working_memory", "long_term"}:
+            return result
+
+        key = str(memory_save.get("key", "")).strip()[:64]
+        value = str(memory_save.get("value", "")).strip()
+        if not value:
+            value = fallback_text.strip()
+        if not value:
+            return result
+
+        layers = self._normalize_memory_layers(state.get("memory_layers", {}))
+        if layer == "short_term":
+            layers["short_term"]["notes"].append(value[:240])
+            layers["short_term"]["notes"] = layers["short_term"]["notes"][-20:]
+            result = {"saved": True, "layer": layer, "key": "note"}
+        else:
+            if not key:
+                return result
+            layers[layer][key] = value[:320]
+            result = {"saved": True, "layer": layer, "key": key}
+
+        state["memory_layers"] = layers
+        return result
+
+    def _refresh_short_term_from_messages(self, state: dict, messages: list[Message]) -> None:
+        layers = self._normalize_memory_layers(state.get("memory_layers", {}))
+        notes: list[str] = []
+        for msg in messages[-SHORT_TERM_WINDOW:]:
+            role = "U" if msg.role == "user" else "A"
+            compact = " ".join(msg.content.split())
+            if len(compact) > 100:
+                compact = compact[:99] + "…"
+            notes.append(f"{role}: {compact}")
+        layers["short_term"]["notes"] = notes[-20:]
+        state["memory_layers"] = layers
+
     def _build_context(
         self,
         state: dict,
@@ -304,8 +419,10 @@ class SimpleChatAgent:
         context_limit: int,
     ) -> tuple[list[Message], dict]:
         full_history = self._normalize_messages(state.get("full_messages", []))
-        full_tokens = self._estimate_tokens_messages(full_history + [incoming_user])
         user_tokens = self._estimate_tokens_messages([incoming_user])
+        memory_messages = self._memory_system_messages(state)
+        memory_tokens = self._estimate_tokens_messages(memory_messages)
+        full_tokens = self._estimate_tokens_messages([*memory_messages, *full_history, incoming_user])
 
         if strategy == "branching":
             branches = state.get("branches", {})
@@ -315,9 +432,9 @@ class SimpleChatAgent:
                 branch_id = "main"
             branch_history = self._normalize_messages(branch.get("messages", []))
             tail = branch_history[-WINDOW_SIZE_MESSAGES:]
-            request_messages = [*tail, incoming_user]
+            request_messages = [*memory_messages, *tail, incoming_user]
             with_tokens = self._estimate_tokens_messages(request_messages)
-            no_tokens = self._estimate_tokens_messages(branch_history + [incoming_user])
+            no_tokens = self._estimate_tokens_messages([*memory_messages, *branch_history, incoming_user])
             dropped = max(0, len(branch_history) - len(tail))
             history_tokens = self._estimate_tokens_messages(tail)
             meta = {
@@ -325,6 +442,7 @@ class SimpleChatAgent:
                 "branch_id": branch_id,
                 "history_tokens": history_tokens,
                 "recent_history_tokens": history_tokens,
+                "memory_tokens": memory_tokens,
                 "facts_count": len(state.get("facts", {})),
                 "prompt_tokens_with_compression_est": with_tokens,
                 "prompt_tokens_no_compression_est": no_tokens,
@@ -337,7 +455,7 @@ class SimpleChatAgent:
         elif strategy == "facts":
             tail = full_history[-WINDOW_SIZE_MESSAGES:]
             facts_msg = self._facts_system_message(state.get("facts", {}))
-            request_messages = ([facts_msg] if facts_msg else []) + tail + [incoming_user]
+            request_messages = [*memory_messages, *([facts_msg] if facts_msg else []), *tail, incoming_user]
             with_tokens = self._estimate_tokens_messages(request_messages)
             dropped = max(0, len(full_history) - len(tail))
             history_tokens = self._estimate_tokens_messages(tail)
@@ -346,9 +464,10 @@ class SimpleChatAgent:
                 "branch_id": "main",
                 "history_tokens": history_tokens,
                 "recent_history_tokens": history_tokens,
+                "memory_tokens": memory_tokens,
                 "facts_count": len(state.get("facts", {})),
                 "prompt_tokens_with_compression_est": with_tokens,
-                "prompt_tokens_no_compression_est": full_tokens,
+                "prompt_tokens_no_compression_est": full_tokens + self._estimate_tokens_messages([facts_msg]) if facts_msg else full_tokens,
                 "saved_tokens_est": max(0, full_tokens - with_tokens),
                 "compressed_messages_count": dropped,
                 "summary_used": False,
@@ -357,7 +476,7 @@ class SimpleChatAgent:
             }
         else:  # sliding
             tail = full_history[-WINDOW_SIZE_MESSAGES:]
-            request_messages = [*tail, incoming_user]
+            request_messages = [*memory_messages, *tail, incoming_user]
             with_tokens = self._estimate_tokens_messages(request_messages)
             dropped = max(0, len(full_history) - len(tail))
             history_tokens = self._estimate_tokens_messages(tail)
@@ -366,6 +485,7 @@ class SimpleChatAgent:
                 "branch_id": "main",
                 "history_tokens": history_tokens,
                 "recent_history_tokens": history_tokens,
+                "memory_tokens": memory_tokens,
                 "facts_count": len(state.get("facts", {})),
                 "prompt_tokens_with_compression_est": with_tokens,
                 "prompt_tokens_no_compression_est": full_tokens,
@@ -400,6 +520,7 @@ class SimpleChatAgent:
             branch_messages = self._normalize_messages(branch.get("messages", []))
             branch_messages.extend([user_msg, assistant_msg])
             branch["messages"] = [{"role": m.role, "content": m.content} for m in branch_messages]
+            self._refresh_short_term_from_messages(state, branch_messages)
 
             # Keep main dialog unchanged unless branch is main.
             if branch_id == "main":
@@ -414,6 +535,7 @@ class SimpleChatAgent:
                 "from_checkpoint": None,
                 "messages": serialized,
             }
+            self._refresh_short_term_from_messages(state, history)
 
     async def stream_reply(
         self,
@@ -424,6 +546,7 @@ class SimpleChatAgent:
         temperature: float = 0.7,
         context_strategy: str = "sliding",
         branch_id: str = "main",
+        memory_save: dict | None = None,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
@@ -441,6 +564,7 @@ class SimpleChatAgent:
                 "branch_id": branch_id,
                 "history_tokens": self._estimate_tokens_messages(incoming),
                 "recent_history_tokens": self._estimate_tokens_messages(incoming),
+                "memory_tokens": 0,
                 "facts_count": 0,
                 "prompt_tokens_with_compression_est": self._estimate_tokens_messages(incoming),
                 "prompt_tokens_no_compression_est": self._estimate_tokens_messages(incoming),
@@ -450,12 +574,18 @@ class SimpleChatAgent:
                 "summary_tokens": 0,
                 "compression_enabled": False,
                 "current_request_tokens": self._estimate_tokens_messages(incoming),
+                "memory_save": {"saved": False, "layer": None, "key": None},
             }
             user_msg = incoming[-1]
         else:
             state = self._get_conversation_state(conversation_id)
             user_msg = incoming[0]
             self._update_facts(state, user_msg.content)
+            memory_save_meta = self._apply_explicit_memory_save(
+                state=state,
+                memory_save=memory_save,
+                fallback_text=user_msg.content,
+            )
             context_limit = MODEL_CONTEXT_LIMITS.get(model, 128000)
             request_messages, context_meta = self._build_context(
                 state=state,
@@ -464,6 +594,7 @@ class SimpleChatAgent:
                 branch_id=branch_id,
                 context_limit=context_limit,
             )
+            context_meta["memory_save"] = memory_save_meta
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
@@ -507,6 +638,7 @@ class SimpleChatAgent:
             else int(context_meta["prompt_tokens_with_compression_est"])
         )
         prompt_pct = round((prompt_for_limit / context_limit) * 100, 2)
+        memory_layers = self._normalize_memory_layers(state.get("memory_layers", {}))
 
         enriched_meta = {
             "time_ms": int((provider_meta or {}).get("time_ms", 0)),
@@ -517,6 +649,7 @@ class SimpleChatAgent:
             "current_request_tokens": int(context_meta["current_request_tokens"]),
             "history_tokens": int(context_meta["history_tokens"]),
             "recent_history_tokens": int(context_meta["recent_history_tokens"]),
+            "memory_tokens": int(context_meta.get("memory_tokens", 0)),
             "facts_count": int(context_meta["facts_count"]),
             "response_tokens": completion_tokens or response_tokens_est,
             "conversation_total_tokens": int(stats["total_tokens_total"]),
@@ -532,6 +665,12 @@ class SimpleChatAgent:
             "compressed_messages_count": int(context_meta["compressed_messages_count"]),
             "context_strategy": context_meta["context_strategy"],
             "branch_id": context_meta["branch_id"],
+            "memory_short_notes_count": len(memory_layers["short_term"]["notes"]),
+            "memory_working_count": len(memory_layers["working_memory"]),
+            "memory_long_count": len(memory_layers["long_term"]),
+            "memory_saved": bool(context_meta.get("memory_save", {}).get("saved", False)),
+            "memory_saved_layer": context_meta.get("memory_save", {}).get("layer"),
+            "memory_saved_key": context_meta.get("memory_save", {}).get("key"),
             "compression_enabled": False,
             "estimated": prompt_tokens == 0,
         }

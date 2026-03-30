@@ -43,6 +43,7 @@ async def chat(request: Request):
     temperature: float = body.get("temperature", 0.7)
     context_strategy: str = body.get("context_strategy", "sliding")
     branch_id: str = body.get("branch_id", "main")
+    memory_save: dict | None = body.get("memory_save")
 
     async def event_stream():
         try:
@@ -54,6 +55,7 @@ async def chat(request: Request):
                 temperature=temperature,
                 context_strategy=context_strategy,
                 branch_id=branch_id,
+                memory_save=memory_save,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
@@ -98,6 +100,11 @@ async def create_branch(request: Request):
         checkpoint_id=checkpoint_id,
         branch_name=branch_name,
     )
+
+
+@app.get("/api/memory")
+async def list_memory(conversation_id: str):
+    return agent.list_memory_layers(conversation_id)
 
 
 @app.get("/", response_class=HTMLResponse)

@@ -590,6 +590,19 @@
             </div>
           </div>
         </div>
+        <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
+          <div class="c-label">Запись в память</div>
+          <div style="display:grid; gap:8px;">
+            <select class="c-input" id="memoryLayerSelect">
+              <option value="">Не сохранять</option>
+              <option value="short_term">Краткосрочная (short_term)</option>
+              <option value="working_memory">Рабочая (working_memory)</option>
+              <option value="long_term">Долговременная (long_term)</option>
+            </select>
+            <input class="c-input" id="memoryKeyInput" placeholder="Ключ (для working/long), например: project_goal" />
+            <input class="c-input" id="memoryValueInput" placeholder="Значение (опц.) — если пусто, сохранится текст сообщения" />
+          </div>
+        </div>
       </div>
       <div class="input-wrapper">
         <textarea id="userInput" placeholder="Напишите сообщение..." rows="1"></textarea>
@@ -777,6 +790,9 @@ function buildMetaHTML(meta) {
       ? `Branching (${meta.branch_id || 'main'})`
       : 'Sliding Window';
   const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
+  const memorySavedInfo = meta.memory_saved
+    ? `<div class="meta-item">Записано в память: <span class="meta-val">${meta.memory_saved_layer}${meta.memory_saved_key ? ` (${meta.memory_saved_key})` : ''}</span></div>`
+    : '';
   const compressionInfo = (meta.prompt_tokens_no_compression_est !== undefined && meta.prompt_tokens_with_compression_est !== undefined)
     ? `<div class="meta-item">Промпт без/со сжатием: <span class="meta-val">${meta.prompt_tokens_no_compression_est} / ${meta.prompt_tokens_with_compression_est}</span> (экономия: ${meta.saved_tokens_est ?? 0} ток.)</div>`
     : '';
@@ -787,11 +803,14 @@ function buildMetaHTML(meta) {
       <div class="meta-item">Текущий запрос: <span class="meta-val">${meta.current_request_tokens ?? '-'}</span> ток.</div>
       <div class="meta-item">История (до): <span class="meta-val">${meta.history_tokens ?? '-'}</span> ток.</div>
       <div class="meta-item">Facts: <span class="meta-val">${meta.facts_count ?? 0}</span></div>
+      <div class="meta-item">Memory токены: <span class="meta-val">${meta.memory_tokens ?? 0}</span></div>
+      <div class="meta-item">Слои памяти: <span class="meta-val">short=${meta.memory_short_notes_count ?? 0}, working=${meta.memory_working_count ?? 0}, long=${meta.memory_long_count ?? 0}</span></div>
       <div class="meta-item">Recent токены: <span class="meta-val">${meta.recent_history_tokens ?? 0}</span> ток.</div>
       <div class="meta-item">Ответ модели: <span class="meta-val">${meta.response_tokens ?? meta.completion_tokens}</span> ток.</div>
       <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
       ${modeInfo}
+      ${memorySavedInfo}
       ${summaryInfo}
       ${compressionInfo}
       <div class="meta-item">Стоимость запроса: <span class="meta-val">${costStr}</span></div>
@@ -842,6 +861,9 @@ const branchRow = $('#branchRow');
 const branchSelect = $('#branchSelect');
 const checkpointBtn = $('#checkpointBtn');
 const createBranchesBtn = $('#createBranchesBtn');
+const memoryLayerSelect = $('#memoryLayerSelect');
+const memoryKeyInput = $('#memoryKeyInput');
+const memoryValueInput = $('#memoryValueInput');
 
 constraintsBtn.addEventListener('click', () => {
   constraintsPanel.classList.toggle('open');
@@ -878,10 +900,12 @@ tempPresets.forEach(btn => {
 });
 
 function updateConstraintIndicator() {
-  const hasConstraints = getSystemPrompt().length > 0 || getTemperature() !== 0.7;
+  const hasMemorySave = (memoryLayerSelect.value || '').length > 0;
+  const hasConstraints = getSystemPrompt().length > 0 || getTemperature() !== 0.7 || hasMemorySave;
   constraintsBtn.classList.toggle('active', hasConstraints);
 }
 [cFormat, cLength, cStop].forEach(el => el.addEventListener('input', updateConstraintIndicator));
+memoryLayerSelect.addEventListener('change', updateConstraintIndicator);
 
 function renderBranchOptions(chat) {
   const branches = Array.isArray(chat.branches) && chat.branches.length
@@ -1024,6 +1048,14 @@ async function send() {
     ? '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + text
     : text;
   const apiMessages = [{ role: 'user', content: userForModel }];
+  const selectedLayer = (memoryLayerSelect.value || '').trim();
+  const memorySave = selectedLayer
+    ? {
+        layer: selectedLayer,
+        key: (memoryKeyInput.value || '').trim(),
+        value: (memoryValueInput.value || '').trim(),
+      }
+    : null;
 
   let full = '';
   let meta = null;
@@ -1039,6 +1071,7 @@ async function send() {
         temperature: getTemperature(),
         context_strategy: chat.contextStrategy || 'sliding',
         branch_id: chat.branchId || 'main',
+        memory_save: memorySave,
       }),
     });
     const reader = resp.body.getReader();
@@ -1086,6 +1119,12 @@ async function send() {
   }
 
   chat.messages.push({ role: 'assistant', content: full, meta: meta || null });
+  if (memorySave) {
+    memoryLayerSelect.value = '';
+    memoryKeyInput.value = '';
+    memoryValueInput.value = '';
+    updateConstraintIndicator();
+  }
   saveChats();
   isStreaming = false;
   sendBtn.disabled = false;
