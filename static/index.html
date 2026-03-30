@@ -1059,17 +1059,16 @@ async function send() {
   if (!activeChatId) createChat();
   const chat = getChat(activeChatId);
   const selectedLayer = (memoryLayerSelect.value || '').trim();
-  const memorySave = selectedLayer
+  const selectedKey = (memoryKeyInput.value || '').trim();
+  const selectedValue = (memoryValueInput.value || '').trim();
+  // Do not block sending: memory save is optional.
+  const memorySave = (selectedLayer && selectedKey)
     ? {
         layer: selectedLayer,
-        key: (memoryKeyInput.value || '').trim(),
-        value: (memoryValueInput.value || '').trim(),
+        key: selectedKey,
+        value: selectedValue,
       }
     : null;
-  if (memorySave && !memorySave.key) {
-    alert('Для working_memory и long_term нужно заполнить поле "Ключ".');
-    return;
-  }
 
   chat.messages.push({ role: 'user', content: text });
   if (chat.messages.length === 1) {
