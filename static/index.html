@@ -329,6 +329,7 @@
     .input-area {
       padding: 16px 20px 20px;
       border-top: 1px solid var(--border);
+      position: relative;
     }
     .input-wrapper {
       max-width: 780px;
@@ -407,28 +408,35 @@
     .constraints-toggle button.active .indicator { display: inline-block; }
 
     .constraints-panel {
-      max-width: 780px;
-      margin: 0 auto 10px;
+      width: min(780px, calc(100% - 40px));
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: calc(100% + 6px);
       background: var(--bg-secondary);
       border: 1px solid var(--border);
       border-radius: 10px;
-      padding: 14px 16px;
+      padding: 10px 12px;
       display: none;
       animation: fadeIn 0.2s ease;
+      max-height: min(62vh, 460px);
+      overflow-y: auto;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+      z-index: 30;
     }
     .constraints-panel.open { display: block; }
     .constraints-panel .c-row {
       display: flex;
       align-items: flex-start;
       gap: 10px;
-      margin-bottom: 8px;
+      margin-bottom: 6px;
     }
     .constraints-panel .c-row:last-child { margin-bottom: 0; }
     .constraints-panel .c-label {
-      min-width: 140px;
+      min-width: 110px;
       font-size: 12px;
       color: #f59e0b;
-      padding-top: 7px;
+      padding-top: 6px;
       font-weight: 500;
     }
     .constraints-panel .c-input {
@@ -514,6 +522,19 @@
         display: none;
       }
       .overlay.show { display: block; }
+      .constraints-panel {
+        width: calc(100% - 24px);
+        bottom: calc(100% + 4px);
+        max-height: 52vh;
+      }
+      .constraints-panel .c-row {
+        flex-direction: column;
+        gap: 6px;
+      }
+      .constraints-panel .c-label {
+        min-width: 0;
+        padding-top: 0;
+      }
     }
   </style>
 </head>
