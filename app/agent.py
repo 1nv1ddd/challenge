@@ -412,37 +412,44 @@ class SimpleChatAgent:
             lines.append(f"- {k}: {v}")
         return Message(role="system", content="\n".join(lines))
 
-    def _apply_explicit_memory_save(
-        self,
-        state: dict,
-        memory_save: dict | None,
-        fallback_text: str,
-    ) -> dict:
-        result = {"saved": False, "layer": None, "key": None}
-        if not isinstance(memory_save, dict):
-            return result
+    def _auto_update_working_memory(self, state: dict, user_text: str) -> list[str]:
+        working = dict(state.get("working_memory", {}))
+        updated: list[str] = []
+        lines = [x.strip() for x in user_text.splitlines() if x.strip()]
 
-        layer = str(memory_save.get("layer", "")).strip().lower()
-        if layer not in {"working_memory", "long_term"}:
-            return result
+        for line in lines:
+            if ":" in line:
+                k, v = line.split(":", 1)
+                key = k.strip().lower().replace(" ", "_")[:64]
+                val = v.strip()[:320]
+                if key and val:
+                    working[key] = val
+                    updated.append(key)
+                continue
 
-        key = str(memory_save.get("key", "")).strip()[:64]
-        value = str(memory_save.get("value", "")).strip()
-        if not value:
-            value = fallback_text.strip()
-        if not key or not value:
-            return result
+            lower = line.lower()
+            if "задач" in lower or "scope" in lower:
+                working["task_scope"] = line[:320]
+                updated.append("task_scope")
+            if "цель" in lower:
+                working["task_goal"] = line[:320]
+                updated.append("task_goal")
+            if "дедлайн" in lower:
+                working["deadline"] = line[:320]
+                updated.append("deadline")
+            if "бюджет" in lower:
+                working["budget"] = line[:320]
+                updated.append("budget")
+            if "огранич" in lower:
+                working["constraints"] = line[:320]
+                updated.append("constraints")
 
-        if layer == "working_memory":
-            working = self._normalize_kv_dict(state.get("working_memory", {}), max_items=40)
-            working[key] = value[:320]
-            state["working_memory"] = self._normalize_kv_dict(working, max_items=40)
-        else:
-            long_term = self._normalize_kv_dict(self.global_memory.get("long_term", {}), max_items=120)
-            long_term[key] = value[:320]
-            self.global_memory["long_term"] = self._normalize_kv_dict(long_term, max_items=120)
-
-        return {"saved": True, "layer": layer, "key": key}
+        state["working_memory"] = self._normalize_kv_dict(working, max_items=40)
+        uniq: list[str] = []
+        for key in updated:
+            if key not in uniq:
+                uniq.append(key)
+        return uniq
 
     def _build_context(
         self,
@@ -554,7 +561,6 @@ class SimpleChatAgent:
         temperature: float = 0.7,
         context_strategy: str = "sliding",
         branch_id: str = "main",
-        memory_save: dict | None = None,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
@@ -581,7 +587,7 @@ class SimpleChatAgent:
                 "summary_tokens": 0,
                 "compression_enabled": False,
                 "current_request_tokens": self._estimate_tokens_messages(incoming),
-                "memory_save": {"saved": False, "layer": None, "key": None},
+                "memory_auto_working_keys": [],
                 "memory_auto_keys": [],
                 "short_term_count": len(incoming),
             }
@@ -591,12 +597,8 @@ class SimpleChatAgent:
             state = self._get_conversation_state(conversation_id)
             user_msg = incoming[0]
             self._update_facts(state, user_msg.content)
+            working_keys = self._auto_update_working_memory(state, user_msg.content)
             auto_keys = self._auto_update_long_term(user_msg.content)
-            memory_save_meta = self._apply_explicit_memory_save(
-                state=state,
-                memory_save=memory_save,
-                fallback_text=user_msg.content,
-            )
             context_limit = MODEL_CONTEXT_LIMITS.get(model, 128000)
             request_messages, context_meta = self._build_context(
                 state=state,
@@ -605,7 +607,7 @@ class SimpleChatAgent:
                 branch_id=branch_id,
                 context_limit=context_limit,
             )
-            context_meta["memory_save"] = memory_save_meta
+            context_meta["memory_auto_working_keys"] = working_keys
             context_meta["memory_auto_keys"] = auto_keys
 
         assistant_chunks: list[str] = []
@@ -681,9 +683,8 @@ class SimpleChatAgent:
             "memory_short_notes_count": int(context_meta.get("short_term_count", WINDOW_SIZE_MESSAGES)),
             "memory_working_count": len(working_memory),
             "memory_long_count": len(long_term),
-            "memory_saved": bool(context_meta.get("memory_save", {}).get("saved", False)),
-            "memory_saved_layer": context_meta.get("memory_save", {}).get("layer"),
-            "memory_saved_key": context_meta.get("memory_save", {}).get("key"),
+            "memory_auto_working_count": len(context_meta.get("memory_auto_working_keys", [])),
+            "memory_auto_working_keys": context_meta.get("memory_auto_working_keys", []),
             "memory_auto_saved_count": len(context_meta.get("memory_auto_keys", [])),
             "memory_auto_saved_keys": context_meta.get("memory_auto_keys", []),
             "compression_enabled": False,
