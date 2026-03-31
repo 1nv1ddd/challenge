@@ -29,7 +29,18 @@ class SimpleChatAgent:
         self.providers = providers
         self.memory_path = Path(memory_path)
         self.state_by_conversation: dict[str, dict] = {}
-        self.global_memory: dict = {"long_term": {}}
+        self.global_memory: dict = {
+            "long_term": {},
+            "profiles": {
+                "default": {
+                    "name": "Default",
+                    "style": "",
+                    "format": "",
+                    "constraints": "",
+                }
+            },
+            "default_profile_id": "default",
+        }
         self._load_history()
 
     def list_models(self) -> dict[str, list[dict]]:
@@ -185,9 +196,40 @@ class SimpleChatAgent:
 
     def _normalize_global_memory(self, data: dict) -> dict:
         if not isinstance(data, dict):
-            return {"long_term": {}}
-        long_term = data.get("long_term", {})
-        return {"long_term": self._normalize_kv_dict(long_term, max_items=120)}
+            data = {}
+        long_term = self._normalize_kv_dict(data.get("long_term", {}), max_items=120)
+
+        raw_profiles = data.get("profiles", {})
+        profiles: dict[str, dict] = {}
+        if isinstance(raw_profiles, dict):
+            for profile_id, profile in raw_profiles.items():
+                if not isinstance(profile, dict):
+                    continue
+                pid = str(profile_id).strip()[:64]
+                if not pid:
+                    continue
+                profiles[pid] = {
+                    "name": str(profile.get("name", pid)).strip()[:80] or pid,
+                    "style": str(profile.get("style", "")).strip()[:500],
+                    "format": str(profile.get("format", "")).strip()[:500],
+                    "constraints": str(profile.get("constraints", "")).strip()[:500],
+                }
+        if "default" not in profiles:
+            profiles["default"] = {
+                "name": "Default",
+                "style": "",
+                "format": "",
+                "constraints": "",
+            }
+        default_profile_id = str(data.get("default_profile_id", "default")).strip()
+        if default_profile_id not in profiles:
+            default_profile_id = "default"
+
+        return {
+            "long_term": long_term,
+            "profiles": profiles,
+            "default_profile_id": default_profile_id,
+        }
 
     @staticmethod
     def _normalize_kv_dict(data: dict, max_items: int) -> dict:
@@ -228,6 +270,58 @@ class SimpleChatAgent:
             "working_memory": state.get("working_memory", {}),
             "long_term": self.global_memory.get("long_term", {}),
         }
+
+    def list_profiles(self) -> dict:
+        profiles = self.global_memory.get("profiles", {})
+        items = []
+        for profile_id, profile in profiles.items():
+            items.append(
+                {
+                    "id": profile_id,
+                    "name": profile.get("name", profile_id),
+                    "style": profile.get("style", ""),
+                    "format": profile.get("format", ""),
+                    "constraints": profile.get("constraints", ""),
+                }
+            )
+        items.sort(key=lambda x: (x["id"] != "default", x["id"]))
+        return {
+            "profiles": items,
+            "default_profile_id": self.global_memory.get("default_profile_id", "default"),
+        }
+
+    def upsert_profile(
+        self,
+        profile_id: str,
+        name: str,
+        style: str,
+        format_pref: str,
+        constraints: str,
+    ) -> dict:
+        pid = str(profile_id or "").strip()[:64]
+        if not pid:
+            raise ValueError("profile_id is required")
+        profile = {
+            "name": (str(name).strip()[:80] or pid),
+            "style": str(style).strip()[:500],
+            "format": str(format_pref).strip()[:500],
+            "constraints": str(constraints).strip()[:500],
+        }
+        profiles = dict(self.global_memory.get("profiles", {}))
+        profiles[pid] = profile
+        self.global_memory["profiles"] = profiles
+        if not self.global_memory.get("default_profile_id"):
+            self.global_memory["default_profile_id"] = "default"
+        self._save_history()
+        return {"ok": True, "profile_id": pid}
+
+    def _resolve_profile(self, profile_id: str | None) -> tuple[str, dict]:
+        profiles = self.global_memory.get("profiles", {})
+        default_id = self.global_memory.get("default_profile_id", "default")
+        requested = str(profile_id or "").strip()
+        pid = requested if requested in profiles else default_id
+        profile = profiles.get(pid, profiles.get("default", {}))
+        return pid, profile
 
     def list_branches(self, conversation_id: str) -> dict:
         state = self._get_conversation_state(conversation_id)
@@ -404,6 +498,23 @@ class SimpleChatAgent:
             lines.append(f"- {k}: {v}")
         return Message(role="system", content="\n".join(lines))
 
+    def _profile_system_message(self, profile: dict) -> Message | None:
+        if not isinstance(profile, dict):
+            return None
+        style = str(profile.get("style", "")).strip()
+        format_pref = str(profile.get("format", "")).strip()
+        constraints = str(profile.get("constraints", "")).strip()
+        if not (style or format_pref or constraints):
+            return None
+        lines = ["User profile preferences (apply automatically):"]
+        if style:
+            lines.append(f"- Style: {style}")
+        if format_pref:
+            lines.append(f"- Format: {format_pref}")
+        if constraints:
+            lines.append(f"- Constraints: {constraints}")
+        return Message(role="system", content="\n".join(lines))
+
     def _facts_system_message(self, facts: dict) -> Message | None:
         if not facts:
             return None
@@ -455,6 +566,8 @@ class SimpleChatAgent:
         self,
         state: dict,
         incoming_user: Message,
+        profile: dict,
+        active_profile_id: str,
         strategy: str,
         branch_id: str,
         context_limit: int,
@@ -464,7 +577,8 @@ class SimpleChatAgent:
 
         working_msg = self._working_memory_system_message(state.get("working_memory", {}))
         long_term_msg = self._long_term_system_message()
-        memory_messages = [m for m in [working_msg, long_term_msg] if m is not None]
+        profile_msg = self._profile_system_message(profile)
+        memory_messages = [m for m in [profile_msg, working_msg, long_term_msg] if m is not None]
         memory_tokens = self._estimate_tokens_messages(memory_messages)
 
         if strategy == "branching":
@@ -518,6 +632,8 @@ class SimpleChatAgent:
             "compression_enabled": False,
             "current_request_tokens": user_tokens,
             "short_term_count": len(short_history),
+            "active_profile_id": active_profile_id,
+            "profile_applied": profile_msg is not None,
         }
         return request_messages, meta
 
@@ -561,9 +677,11 @@ class SimpleChatAgent:
         temperature: float = 0.7,
         context_strategy: str = "sliding",
         branch_id: str = "main",
+        profile_id: str | None = None,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
+        active_profile_id, profile = self._resolve_profile(profile_id)
         strategy = context_strategy if context_strategy in ALLOWED_STRATEGIES else "sliding"
         normalized_temperature = self._normalize_temperature(temperature)
         incoming = self._normalize_messages(raw_messages)
@@ -590,6 +708,8 @@ class SimpleChatAgent:
                 "memory_auto_working_keys": [],
                 "memory_auto_keys": [],
                 "short_term_count": len(incoming),
+                "active_profile_id": active_profile_id,
+                "profile_applied": bool(self._profile_system_message(profile)),
             }
             user_msg = incoming[-1]
             state = self._get_conversation_state(conversation_id)
@@ -603,6 +723,8 @@ class SimpleChatAgent:
             request_messages, context_meta = self._build_context(
                 state=state,
                 incoming_user=user_msg,
+                profile=profile,
+                active_profile_id=active_profile_id,
                 strategy=strategy,
                 branch_id=branch_id,
                 context_limit=context_limit,
@@ -680,6 +802,8 @@ class SimpleChatAgent:
             "compressed_messages_count": int(context_meta["compressed_messages_count"]),
             "context_strategy": context_meta["context_strategy"],
             "branch_id": context_meta["branch_id"],
+            "active_profile_id": context_meta.get("active_profile_id", active_profile_id),
+            "profile_applied": bool(context_meta.get("profile_applied", False)),
             "memory_short_notes_count": int(context_meta.get("short_term_count", WINDOW_SIZE_MESSAGES)),
             "memory_working_count": len(working_memory),
             "memory_long_count": len(long_term),

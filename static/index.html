@@ -533,6 +533,8 @@
       <button class="hamburger" id="hamburger">☰</button>
       <label>Модель:</label>
       <select id="modelSelect"></select>
+      <label>Профиль:</label>
+      <select id="profileSelect"></select>
     </div>
 
     <div class="messages" id="messages">
@@ -597,6 +599,19 @@
             <pre id="memoryView" style="margin:0; max-height:180px; overflow:auto; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--text-secondary); font-size:12px;">(пока пусто)</pre>
           </div>
         </div>
+        <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
+          <div class="c-label">Профиль пользователя</div>
+          <div style="display:grid; gap:8px;">
+            <input class="c-input" id="profileNameInput" placeholder="Название профиля" />
+            <textarea class="c-input" id="profileStyleInput" rows="2" placeholder="Стиль (например: кратко, дружелюбно)"></textarea>
+            <textarea class="c-input" id="profileFormatInput" rows="2" placeholder="Формат (например: буллеты, таблица)"></textarea>
+            <textarea class="c-input" id="profileConstraintsInput" rows="2" placeholder="Ограничения (например: до 120 слов, без воды)"></textarea>
+            <div style="display:flex; gap:8px;">
+              <button type="button" id="saveProfileBtn">Сохранить профиль</button>
+              <button type="button" id="newProfileBtn">Новый профиль</button>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="input-wrapper">
         <textarea id="userInput" placeholder="Напишите сообщение..." rows="1"></textarea>
@@ -616,6 +631,7 @@ marked.setOptions({
 
 const $ = s => document.querySelector(s);
 const modelSel    = $('#modelSelect');
+const profileSel  = $('#profileSelect');
 const messagesEl  = $('#messages');
 const welcomeEl   = $('#welcome');
 const userInput   = $('#userInput');
@@ -626,6 +642,8 @@ const overlay     = $('#overlay');
 
 let providerName = '';
 let modelList = [];
+let profileList = [];
+let defaultProfileId = 'default';
 let chats       = JSON.parse(localStorage.getItem('aichat_chats') || '[]');
 let activeChatId = null;
 let isStreaming  = false;
@@ -644,11 +662,16 @@ async function init() {
     }
   } catch { modelList = []; }
 
+  await loadProfiles();
+
   modelSel.innerHTML = modelList.map(m =>
     `<option value="${m.id}">${m.label}</option>`
   ).join('');
 
   modelSel.addEventListener('change', syncChatModel);
+  profileSel.addEventListener('change', syncChatProfile);
+  profileSel.value = defaultProfileId;
+  fillProfileEditor(defaultProfileId);
 
   renderChatsList();
   if (chats.length) selectChat(chats[0].id);
@@ -664,6 +687,44 @@ function syncChatModel() {
   }
 }
 
+async function loadProfiles() {
+  try {
+    const resp = await fetch('/api/profiles');
+    const data = await resp.json();
+    profileList = Array.isArray(data.profiles) ? data.profiles : [];
+    defaultProfileId = data.default_profile_id || 'default';
+  } catch {
+    profileList = [];
+    defaultProfileId = 'default';
+  }
+  if (!profileList.length) {
+    profileList = [{ id: 'default', name: 'Default', style: '', format: '', constraints: '' }];
+  }
+  profileSel.innerHTML = profileList.map(p => `<option value="${p.id}">${escapeHtml(p.name || p.id)}</option>`).join('');
+}
+
+function getProfile(id) {
+  return profileList.find(p => p.id === id);
+}
+
+function fillProfileEditor(profileId) {
+  const p = getProfile(profileId) || getProfile(defaultProfileId) || profileList[0];
+  if (!p) return;
+  profileNameInput.value = p.name || '';
+  profileStyleInput.value = p.style || '';
+  profileFormatInput.value = p.format || '';
+  profileConstraintsInput.value = p.constraints || '';
+}
+
+function syncChatProfile() {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  chat.profileId = profileSel.value || defaultProfileId;
+  saveChats();
+  fillProfileEditor(chat.profileId);
+}
+
 // ---- Chat CRUD ----
 function createChat() {
   const chat = {
@@ -671,6 +732,7 @@ function createChat() {
     title: 'Новый чат',
     provider: providerName,
     model: modelSel.value,
+    profileId: profileSel.value || defaultProfileId,
     contextStrategy: 'sliding',
     branchId: 'main',
     latestCheckpointId: null,
@@ -702,11 +764,14 @@ function selectChat(id) {
 
   if (!chat.contextStrategy) chat.contextStrategy = 'sliding';
   if (!chat.branchId) chat.branchId = 'main';
+  if (!chat.profileId) chat.profileId = defaultProfileId;
   if (!Array.isArray(chat.branches)) {
     chat.branches = [{ id: 'main', name: 'main', message_count: 0 }];
   }
 
   modelSel.value = chat.model;
+  profileSel.value = chat.profileId;
+  fillProfileEditor(chat.profileId);
   contextStrategy.value = chat.contextStrategy;
   renderBranchControls(chat);
   if (chat.contextStrategy === 'branching') refreshBranches(chat);
@@ -785,6 +850,7 @@ function buildMetaHTML(meta) {
       ? `Branching (${meta.branch_id || 'main'})`
       : 'Sliding Window';
   const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
+  const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
     ? `<div class="meta-item">Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span> (${(meta.memory_auto_saved_keys || []).join(', ')})</div>`
     : '';
@@ -808,6 +874,7 @@ function buildMetaHTML(meta) {
       <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
       ${modeInfo}
+      ${profileInfo}
       ${autoWorkingInfo}
       ${autoMemoryInfo}
       ${summaryInfo}
@@ -862,6 +929,12 @@ const checkpointBtn = $('#checkpointBtn');
 const createBranchesBtn = $('#createBranchesBtn');
 const memoryRefreshBtn = $('#memoryRefreshBtn');
 const memoryView = $('#memoryView');
+const profileNameInput = $('#profileNameInput');
+const profileStyleInput = $('#profileStyleInput');
+const profileFormatInput = $('#profileFormatInput');
+const profileConstraintsInput = $('#profileConstraintsInput');
+const saveProfileBtn = $('#saveProfileBtn');
+const newProfileBtn = $('#newProfileBtn');
 
 constraintsBtn.addEventListener('click', () => {
   constraintsPanel.classList.toggle('open');
@@ -1038,6 +1111,46 @@ memoryRefreshBtn.addEventListener('click', async () => {
   await refreshMemoryView(chat);
 });
 
+saveProfileBtn.addEventListener('click', async () => {
+  const selectedId = (profileSel.value || '').trim();
+  const profileId = selectedId || `profile-${Date.now()}`;
+  const payload = {
+    profile_id: profileId,
+    name: (profileNameInput.value || '').trim() || profileId,
+    style: (profileStyleInput.value || '').trim(),
+    format: (profileFormatInput.value || '').trim(),
+    constraints: (profileConstraintsInput.value || '').trim(),
+  };
+  try {
+    const resp = await fetch('/api/profiles', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    const savedId = data.profile_id || profileId;
+    await loadProfiles();
+    profileSel.value = savedId;
+    if (activeChatId) {
+      const chat = getChat(activeChatId);
+      if (chat) {
+        chat.profileId = savedId;
+        saveChats();
+      }
+    }
+    fillProfileEditor(savedId);
+  } catch {}
+});
+
+newProfileBtn.addEventListener('click', () => {
+  const newId = `profile-${Date.now()}`;
+  profileSel.value = '';
+  profileNameInput.value = newId;
+  profileStyleInput.value = '';
+  profileFormatInput.value = '';
+  profileConstraintsInput.value = '';
+});
+
 // ---- Send ----
 async function send() {
   const text = userInput.value.trim();
@@ -1079,6 +1192,7 @@ async function send() {
         conversation_id: chat.id,
         messages: apiMessages,
         temperature: getTemperature(),
+        profile_id: chat.profileId || defaultProfileId,
         context_strategy: chat.contextStrategy || 'sliding',
         branch_id: chat.branchId || 'main',
       }),

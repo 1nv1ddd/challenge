@@ -43,6 +43,7 @@ async def chat(request: Request):
     temperature: float = body.get("temperature", 0.7)
     context_strategy: str = body.get("context_strategy", "sliding")
     branch_id: str = body.get("branch_id", "main")
+    profile_id: str | None = body.get("profile_id")
 
     async def event_stream():
         try:
@@ -54,6 +55,7 @@ async def chat(request: Request):
                 temperature=temperature,
                 context_strategy=context_strategy,
                 branch_id=branch_id,
+                profile_id=profile_id,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
@@ -103,6 +105,28 @@ async def create_branch(request: Request):
 @app.get("/api/memory")
 async def list_memory(conversation_id: str, branch_id: str = "main"):
     return agent.list_memory_layers(conversation_id, branch_id=branch_id)
+
+
+@app.get("/api/profiles")
+async def list_profiles():
+    return agent.list_profiles()
+
+
+@app.post("/api/profiles")
+async def upsert_profile(request: Request):
+    body = await request.json()
+    profile_id: str = body.get("profile_id", "")
+    name: str = body.get("name", "")
+    style: str = body.get("style", "")
+    format_pref: str = body.get("format", "")
+    constraints: str = body.get("constraints", "")
+    return agent.upsert_profile(
+        profile_id=profile_id,
+        name=name,
+        style=style,
+        format_pref=format_pref,
+        constraints=constraints,
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
