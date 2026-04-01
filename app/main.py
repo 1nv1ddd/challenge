@@ -44,6 +44,7 @@ async def chat(request: Request):
     context_strategy: str = body.get("context_strategy", "sliding")
     branch_id: str = body.get("branch_id", "main")
     profile_id: str | None = body.get("profile_id")
+    resume: bool = bool(body.get("resume", False))
 
     async def event_stream():
         try:
@@ -56,6 +57,7 @@ async def chat(request: Request):
                 context_strategy=context_strategy,
                 branch_id=branch_id,
                 profile_id=profile_id,
+                resume=resume,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
@@ -126,6 +128,28 @@ async def upsert_profile(request: Request):
         style=style,
         format_pref=format_pref,
         constraints=constraints,
+    )
+
+
+@app.get("/api/task-state")
+async def list_task_state(conversation_id: str):
+    return agent.list_task_state(conversation_id)
+
+
+@app.post("/api/task-state")
+async def update_task_state(request: Request):
+    body = await request.json()
+    conversation_id: str = body.get("conversation_id", "default")
+    phase: str | None = body.get("phase")
+    current_step: str | None = body.get("current_step")
+    expected_action: str | None = body.get("expected_action")
+    action: str | None = body.get("action")
+    return agent.update_task_state(
+        conversation_id=conversation_id,
+        phase=phase,
+        current_step=current_step,
+        expected_action=expected_action,
+        action=action,
     )
 
 

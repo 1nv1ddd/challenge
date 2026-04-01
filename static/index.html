@@ -636,7 +636,7 @@
       </div>
       <div class="input-wrapper">
         <textarea id="userInput" placeholder="Напишите сообщение..." rows="1"></textarea>
-        <button class="send-btn" id="sendBtn" title="Отправить">➤</button>
+        <button class="send-btn" id="pauseToggleBtn" title="Отправить">➤</button>
       </div>
     </div>
   </main>
@@ -656,7 +656,7 @@ const profileSel  = $('#profileSelect');
 const messagesEl  = $('#messages');
 const welcomeEl   = $('#welcome');
 const userInput   = $('#userInput');
-const sendBtn     = $('#sendBtn');
+const pauseToggleBtn = $('#pauseToggleBtn');
 const chatsList   = $('#chatsList');
 const sidebar     = $('#sidebar');
 const overlay     = $('#overlay');
@@ -668,6 +668,7 @@ let defaultProfileId = 'default';
 let chats       = JSON.parse(localStorage.getItem('aichat_chats') || '[]');
 let activeChatId = null;
 let isStreaming  = false;
+let activeTaskState = null;
 
 function saveChats() { localStorage.setItem('aichat_chats', JSON.stringify(chats)); }
 function getChat(id) { return chats.find(c => c.id === id); }
@@ -693,6 +694,9 @@ async function init() {
   profileSel.addEventListener('change', syncChatProfile);
   profileSel.value = defaultProfileId;
   fillProfileEditor(defaultProfileId);
+  applyTaskStateToControls({
+    is_paused: false
+  });
 
   renderChatsList();
   if (chats.length) selectChat(chats[0].id);
@@ -800,6 +804,7 @@ function selectChat(id) {
   renderChatsList();
   renderMessages(chat.messages);
   refreshMemoryView(chat);
+  refreshTaskState(chat);
 }
 
 // ---- Render ----
@@ -872,6 +877,7 @@ function buildMetaHTML(meta) {
       : 'Sliding Window';
   const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
+  const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}</div>`;
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
     ? `<div class="meta-item">Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span> (${(meta.memory_auto_saved_keys || []).join(', ')})</div>`
     : '';
@@ -896,6 +902,7 @@ function buildMetaHTML(meta) {
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
       ${modeInfo}
       ${profileInfo}
+      ${taskInfo}
       ${autoWorkingInfo}
       ${autoMemoryInfo}
       ${summaryInfo}
@@ -1041,6 +1048,57 @@ async function refreshMemoryView(chat) {
   }
 }
 
+function applyTaskStateToControls(taskState) {
+  if (!taskState) return;
+  activeTaskState = taskState;
+  renderActionButton();
+}
+
+function renderActionButton() {
+  const paused = !!(activeTaskState && activeTaskState.is_paused);
+  if (isStreaming) {
+    pauseToggleBtn.textContent = '⏸';
+    pauseToggleBtn.title = 'Пауза во время генерации';
+    pauseToggleBtn.style.background = '#f59e0b';
+  } else if (paused) {
+    pauseToggleBtn.textContent = '▶';
+    pauseToggleBtn.title = 'Продолжить генерацию';
+    pauseToggleBtn.style.background = '#16a34a';
+  } else {
+    pauseToggleBtn.textContent = '➤';
+    pauseToggleBtn.title = 'Отправить';
+    pauseToggleBtn.style.background = 'var(--accent)';
+  }
+}
+
+async function refreshTaskState(chat) {
+  if (!chat) return;
+  try {
+    const resp = await fetch(`/api/task-state?conversation_id=${encodeURIComponent(chat.id)}`);
+    const data = await resp.json();
+    applyTaskStateToControls(data);
+  } catch {}
+}
+
+async function updateTaskState(action = '') {
+  if (!activeChatId) createChat();
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  const payload = {
+    conversation_id: chat.id,
+    action: action || null
+  };
+  try {
+    const resp = await fetch('/api/task-state', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await resp.json();
+    applyTaskStateToControls(data);
+  } catch {}
+}
+
 contextStrategy.addEventListener('change', async () => {
   if (!activeChatId) return;
   const chat = getChat(activeChatId);
@@ -1132,6 +1190,14 @@ memoryRefreshBtn.addEventListener('click', async () => {
   await refreshMemoryView(chat);
 });
 
+pauseToggleBtn.addEventListener('click', async () => {
+  if (isStreaming) {
+    await updateTaskState('pause');
+    return;
+  }
+  send();
+});
+
 saveProfileBtn.addEventListener('click', async () => {
   const selectedId = (profileSel.value || '').trim();
   const profileId = selectedId || `profile-${Date.now()}`;
@@ -1175,30 +1241,34 @@ newProfileBtn.addEventListener('click', () => {
 // ---- Send ----
 async function send() {
   const text = userInput.value.trim();
-  if (!text || isStreaming) return;
+  const isResume = !!(activeTaskState && activeTaskState.is_paused);
+  if (isStreaming) return;
+  if (!isResume && !text) return;
 
   if (!activeChatId) createChat();
   const chat = getChat(activeChatId);
 
-  chat.messages.push({ role: 'user', content: text });
-  if (chat.messages.length === 1) {
-    chat.title = text.slice(0, 60) + (text.length > 60 ? '…' : '');
-    renderChatsList();
+  if (text) {
+    chat.messages.push({ role: 'user', content: text });
+    if (chat.messages.length === 1) {
+      chat.title = text.slice(0, 60) + (text.length > 60 ? '…' : '');
+      renderChatsList();
+    }
+    appendMsg('user').textContent = text;
   }
-
-  appendMsg('user').textContent = text;
   userInput.value = '';
   autoResize();
 
   isStreaming = true;
-  sendBtn.disabled = true;
+  renderActionButton();
   const contentEl = appendMsg('assistant');
   contentEl.classList.add('typing-indicator');
 
   const systemPrompt = getSystemPrompt();
+  const baseUserText = text || 'continue';
   const userForModel = systemPrompt
-    ? '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + text
-    : text;
+    ? '[Инструкции для ответа]\n' + systemPrompt + '\n[/Инструкции]\n\n' + baseUserText
+    : baseUserText;
   const apiMessages = [{ role: 'user', content: userForModel }];
 
   let full = '';
@@ -1216,6 +1286,7 @@ async function send() {
         profile_id: chat.profileId || defaultProfileId,
         context_strategy: chat.contextStrategy || 'sliding',
         branch_id: chat.branchId || 'main',
+        resume: isResume,
       }),
     });
     const reader = resp.body.getReader();
@@ -1265,8 +1336,9 @@ async function send() {
   chat.messages.push({ role: 'assistant', content: full, meta: meta || null });
   saveChats();
   await refreshMemoryView(chat);
+  await refreshTaskState(chat);
   isStreaming = false;
-  sendBtn.disabled = false;
+  renderActionButton();
   scrollDown();
 }
 
@@ -1279,7 +1351,6 @@ userInput.addEventListener('input', autoResize);
 userInput.addEventListener('keydown', e => {
   if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
 });
-sendBtn.addEventListener('click', send);
 $('#newChatBtn').addEventListener('click', createChat);
 
 // ---- Mobile sidebar ----

@@ -16,6 +16,40 @@ OUTPUT_PRICE_RUB_PER_MILLION = 63.0
 WINDOW_SIZE_MESSAGES = 10
 ALLOWED_STRATEGIES = {"sliding", "facts", "branching"}
 GLOBAL_KEY = "__global__"
+TASK_PHASES = ("planning", "execution", "validation", "done")
+TASK_EVENT_NEW_TASK = "new_task"
+TASK_EVENT_ASSISTANT_TURN_COMPLETED = "assistant_turn_completed"
+TASK_EVENT_PAUSE = "pause"
+TASK_EVENT_RESUME = "resume"
+LONG_TERM_ALLOWED_KEYS = {
+    "profile",
+    "preferences",
+    "decisions",
+    "budget",
+    "deadline",
+    "style",
+    "format",
+    "language",
+    "tone",
+}
+TASK_PHASE_TO_DEFAULTS = {
+    "planning": {
+        "current_step": "Define scope and acceptance criteria",
+        "expected_action": "Provide goal, constraints, and desired result",
+    },
+    "execution": {
+        "current_step": "Implement the agreed plan",
+        "expected_action": "Proceed with implementation and share progress",
+    },
+    "validation": {
+        "current_step": "Verify behavior and quality",
+        "expected_action": "Run checks/tests and confirm requirements",
+    },
+    "done": {
+        "current_step": "Task completed",
+        "expected_action": "No action required",
+    },
+}
 
 
 class SimpleChatAgent:
@@ -50,18 +84,18 @@ class SimpleChatAgent:
         self.memory_path.parent.mkdir(parents=True, exist_ok=True)
         if not self.memory_path.exists():
             self.state_by_conversation = {}
-            self.global_memory = {"long_term": {}}
+            self.global_memory = self._normalize_global_memory({})
             return
         try:
             raw = json.loads(self.memory_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             self.state_by_conversation = {}
-            self.global_memory = {"long_term": {}}
+            self.global_memory = self._normalize_global_memory({})
             return
 
         if not isinstance(raw, dict):
             self.state_by_conversation = {}
-            self.global_memory = {"long_term": {}}
+            self.global_memory = self._normalize_global_memory({})
             return
 
         self.global_memory = self._normalize_global_memory(raw.get(GLOBAL_KEY, {}))
@@ -88,6 +122,20 @@ class SimpleChatAgent:
             "completion_tokens_total": 0,
             "total_tokens_total": 0,
             "cost_rub_total": 0.0,
+        }
+
+    @staticmethod
+    def _empty_task_state() -> dict:
+        defaults = TASK_PHASE_TO_DEFAULTS["planning"]
+        return {
+            "phase": "planning",
+            "current_step": defaults["current_step"],
+            "expected_action": defaults["expected_action"],
+            "status": "running",
+            "is_paused": False,
+            "task_active": False,
+            "last_event": "init",
+            "updated_at": int(time.time()),
         }
 
     def _normalize_stats(self, stats: dict) -> dict:
@@ -123,6 +171,7 @@ class SimpleChatAgent:
                 },
                 "checkpoints": {},
                 "stats": self._empty_stats(),
+                "task_state": self._empty_task_state(),
             }
 
         if not isinstance(conv_data, dict):
@@ -134,6 +183,7 @@ class SimpleChatAgent:
                 "branches": {"main": {"name": "main", "from_checkpoint": None, "messages": []}},
                 "checkpoints": {},
                 "stats": self._empty_stats(),
+                "task_state": self._empty_task_state(),
             }
 
         full = conv_data.get("full_messages")
@@ -192,12 +242,47 @@ class SimpleChatAgent:
             "branches": branches,
             "checkpoints": checkpoints,
             "stats": self._normalize_stats(conv_data.get("stats", {})),
+            "task_state": self._normalize_task_state(conv_data.get("task_state", {})),
+        }
+
+    def _normalize_task_state(self, data: dict) -> dict:
+        base = self._empty_task_state()
+        if not isinstance(data, dict):
+            return base
+        phase = str(data.get("phase", base["phase"])).strip().lower()
+        if phase not in TASK_PHASES:
+            phase = "planning"
+        current_step = str(
+            data.get("current_step", TASK_PHASE_TO_DEFAULTS[phase]["current_step"])
+        ).strip()[:220]
+        expected_action = str(
+            data.get("expected_action", TASK_PHASE_TO_DEFAULTS[phase]["expected_action"])
+        ).strip()[:260]
+        if not current_step:
+            current_step = TASK_PHASE_TO_DEFAULTS[phase]["current_step"]
+        if not expected_action:
+            expected_action = TASK_PHASE_TO_DEFAULTS[phase]["expected_action"]
+        status = str(data.get("status", "paused" if data.get("is_paused") else "running")).strip().lower()
+        if status not in {"running", "paused"}:
+            status = "running"
+        is_paused = status == "paused"
+        return {
+            "phase": phase,
+            "current_step": current_step,
+            "expected_action": expected_action,
+            "status": status,
+            "is_paused": is_paused,
+            "task_active": bool(data.get("task_active", False)),
+            "last_event": str(data.get("last_event", ""))[:48],
+            "updated_at": int(data.get("updated_at", int(time.time()))),
         }
 
     def _normalize_global_memory(self, data: dict) -> dict:
         if not isinstance(data, dict):
             data = {}
-        long_term = self._normalize_kv_dict(data.get("long_term", {}), max_items=120)
+        long_term = self._sanitize_long_term(
+            self._normalize_kv_dict(data.get("long_term", {}), max_items=120)
+        )
 
         raw_profiles = data.get("profiles", {})
         profiles: dict[str, dict] = {}
@@ -232,6 +317,18 @@ class SimpleChatAgent:
         }
 
     @staticmethod
+    def _sanitize_long_term(data: dict) -> dict:
+        if not isinstance(data, dict):
+            return {}
+        filtered: dict[str, str] = {}
+        for key, val in data.items():
+            k = str(key).strip().lower()
+            v = str(val).strip()
+            if k in LONG_TERM_ALLOWED_KEYS and v:
+                filtered[k] = v[:320]
+        return filtered
+
+    @staticmethod
     def _normalize_kv_dict(data: dict, max_items: int) -> dict:
         if not isinstance(data, dict):
             return {}
@@ -253,6 +350,7 @@ class SimpleChatAgent:
                 "branches": {"main": {"name": "main", "from_checkpoint": None, "messages": []}},
                 "checkpoints": {},
                 "stats": self._empty_stats(),
+                "task_state": self._empty_task_state(),
             }
         return self.state_by_conversation[conversation_id]
 
@@ -289,6 +387,115 @@ class SimpleChatAgent:
             "profiles": items,
             "default_profile_id": self.global_memory.get("default_profile_id", "default"),
         }
+
+    def list_task_state(self, conversation_id: str) -> dict:
+        state = self._get_conversation_state(conversation_id)
+        return self._normalize_task_state(state.get("task_state", {}))
+
+    def update_task_state(
+        self,
+        conversation_id: str,
+        phase: str | None = None,
+        current_step: str | None = None,
+        expected_action: str | None = None,
+        action: str | None = None,
+    ) -> dict:
+        state = self._get_conversation_state(conversation_id)
+        task_state = self._normalize_task_state(state.get("task_state", {}))
+
+        normalized_action = str(action or "").strip().lower()
+        if normalized_action == "pause":
+            task_state = self._transition_task_state(
+                task_state=task_state,
+                event=TASK_EVENT_PAUSE,
+            )
+        elif normalized_action == "resume":
+            task_state = self._transition_task_state(
+                task_state=task_state,
+                event=TASK_EVENT_RESUME,
+            )
+        elif normalized_action == "next":
+            cur = task_state.get("phase", "planning")
+            if cur == "planning":
+                task_state["phase"] = "execution"
+            elif cur == "execution":
+                task_state["phase"] = "validation"
+            elif cur == "validation":
+                task_state["phase"] = "done"
+            phase_defaults = TASK_PHASE_TO_DEFAULTS[task_state["phase"]]
+            task_state["current_step"] = phase_defaults["current_step"]
+            task_state["expected_action"] = phase_defaults["expected_action"]
+        elif normalized_action == "reset":
+            task_state = self._empty_task_state()
+
+        if phase is not None:
+            phase_norm = str(phase).strip().lower()
+            if phase_norm in TASK_PHASES:
+                prev_phase = task_state["phase"]
+                task_state["phase"] = phase_norm
+                task_state["task_active"] = True
+                if prev_phase != phase_norm:
+                    phase_defaults = TASK_PHASE_TO_DEFAULTS[phase_norm]
+                    task_state["current_step"] = phase_defaults["current_step"]
+                    task_state["expected_action"] = phase_defaults["expected_action"]
+
+        if current_step is not None:
+            custom_step = str(current_step).strip()[:220]
+            if custom_step:
+                task_state["current_step"] = custom_step
+
+        if expected_action is not None:
+            custom_expected = str(expected_action).strip()[:260]
+            if custom_expected:
+                task_state["expected_action"] = custom_expected
+
+        task_state["is_paused"] = task_state.get("status") == "paused"
+        task_state["updated_at"] = int(time.time())
+        state["task_state"] = self._normalize_task_state(task_state)
+        self._save_history()
+        return state["task_state"]
+
+    def _transition_task_state(
+        self,
+        task_state: dict,
+        event: str,
+    ) -> dict:
+        s = self._normalize_task_state(task_state)
+        phase = s["phase"]
+
+        if event == TASK_EVENT_NEW_TASK:
+            defaults = TASK_PHASE_TO_DEFAULTS["planning"]
+            s["phase"] = "planning"
+            s["current_step"] = defaults["current_step"]
+            s["expected_action"] = defaults["expected_action"]
+            s["task_active"] = True
+            s["status"] = "running"
+        elif event == TASK_EVENT_PAUSE:
+            s["status"] = "paused"
+            s["expected_action"] = "Resume to continue current generation"
+        elif event == TASK_EVENT_RESUME:
+            s["status"] = "running"
+            if s["task_active"]:
+                s["expected_action"] = TASK_PHASE_TO_DEFAULTS[s["phase"]]["expected_action"]
+        elif event == TASK_EVENT_ASSISTANT_TURN_COMPLETED:
+            if s["task_active"] and s["status"] == "running":
+                next_phase = phase
+                if phase == "planning":
+                    next_phase = "execution"
+                elif phase == "execution":
+                    next_phase = "validation"
+                elif phase == "validation":
+                    next_phase = "done"
+                if next_phase != phase:
+                    defaults = TASK_PHASE_TO_DEFAULTS[next_phase]
+                    s["phase"] = next_phase
+                    s["current_step"] = defaults["current_step"]
+                    s["expected_action"] = defaults["expected_action"]
+
+        s["is_paused"] = s["status"] == "paused"
+        s["last_event"] = event
+        s["updated_at"] = int(time.time())
+        return self._normalize_task_state(s)
 
     def upsert_profile(
         self,
@@ -445,36 +652,38 @@ class SimpleChatAgent:
         state["facts"] = trimmed
 
     def _auto_update_long_term(self, user_text: str) -> list[str]:
-        long_term = dict(self.global_memory.get("long_term", {}))
+        long_term = dict(self._sanitize_long_term(self.global_memory.get("long_term", {})))
         updated_keys: list[str] = []
         for line in [x.strip() for x in user_text.splitlines() if x.strip()]:
             if ":" in line:
                 k, v = line.split(":", 1)
                 key = k.strip().lower().replace(" ", "_")[:64]
                 val = v.strip()[:320]
-                if key and val and len(val) >= 3:
+                if key in LONG_TERM_ALLOWED_KEYS and val and len(val) >= 3:
                     long_term[key] = val
                     updated_keys.append(key)
                 continue
 
             lower = line.lower()
-            if "предпочт" in lower:
+            if "предпочт" in lower and len(line) <= 220:
                 long_term["preferences"] = line[:320]
                 updated_keys.append("preferences")
-            if "решен" in lower:
+            if "решен" in lower and len(line) <= 220:
                 long_term["decisions"] = line[:320]
                 updated_keys.append("decisions")
-            if "профил" in lower:
+            if "профил" in lower and len(line) <= 220:
                 long_term["profile"] = line[:320]
                 updated_keys.append("profile")
-            if "бюджет" in lower:
+            if "бюджет" in lower and len(line) <= 120:
                 long_term["budget"] = line[:320]
                 updated_keys.append("budget")
-            if "дедлайн" in lower:
+            if "дедлайн" in lower and len(line) <= 120:
                 long_term["deadline"] = line[:320]
                 updated_keys.append("deadline")
 
-        self.global_memory["long_term"] = self._normalize_kv_dict(long_term, max_items=120)
+        self.global_memory["long_term"] = self._sanitize_long_term(
+            self._normalize_kv_dict(long_term, max_items=120)
+        )
         uniq: list[str] = []
         for key in updated_keys:
             if key not in uniq:
@@ -514,6 +723,66 @@ class SimpleChatAgent:
         if constraints:
             lines.append(f"- Constraints: {constraints}")
         return Message(role="system", content="\n".join(lines))
+
+    def _task_state_system_message(self, task_state: dict) -> Message | None:
+        task_state = self._normalize_task_state(task_state)
+        phase = task_state["phase"]
+        current_step = task_state["current_step"]
+        expected_action = task_state["expected_action"]
+        is_paused = task_state["is_paused"]
+        lines = [
+            "Task state machine (persisted):",
+            f"- phase: {phase}",
+            f"- current_step: {current_step}",
+            f"- expected_action: {expected_action}",
+            f"- paused: {'yes' if is_paused else 'no'}",
+            (
+                "Use this state ONLY when user asks to work on the task; "
+                "for greetings/small-talk, respond normally and briefly."
+            ),
+        ]
+        return Message(role="system", content="\n".join(lines))
+
+    @staticmethod
+    def _is_smalltalk_message(text: str) -> bool:
+        t = (text or "").strip().lower()
+        if not t:
+            return False
+        if len(t) > 40:
+            return False
+        normalized = t.replace("!", "").replace("?", "").replace(".", "")
+        smalltalk = {
+            "привет",
+            "здарова",
+            "хай",
+            "hello",
+            "hi",
+            "hey",
+            "добрый день",
+            "добрый вечер",
+            "как дела",
+        }
+        return normalized in smalltalk
+
+    @staticmethod
+    def _is_task_intent_message(text: str) -> bool:
+        t = (text or "").strip().lower()
+        if not t or len(t) < 24:
+            return False
+        markers = (
+            "нужно",
+            "сделай",
+            "план",
+            "реализ",
+            "провер",
+            "метрик",
+            "запуст",
+            "задач",
+            "mvp",
+            "project",
+            "task",
+        )
+        return any(m in t for m in markers)
 
     def _facts_system_message(self, facts: dict) -> Message | None:
         if not facts:
@@ -568,6 +837,7 @@ class SimpleChatAgent:
         incoming_user: Message,
         profile: dict,
         active_profile_id: str,
+        include_task_state: bool,
         strategy: str,
         branch_id: str,
         context_limit: int,
@@ -578,7 +848,9 @@ class SimpleChatAgent:
         working_msg = self._working_memory_system_message(state.get("working_memory", {}))
         long_term_msg = self._long_term_system_message()
         profile_msg = self._profile_system_message(profile)
-        memory_messages = [m for m in [profile_msg, working_msg, long_term_msg] if m is not None]
+        task_state = self._normalize_task_state(state.get("task_state", {}))
+        task_msg = self._task_state_system_message(task_state) if include_task_state else None
+        memory_messages = [m for m in [profile_msg, task_msg, working_msg, long_term_msg] if m is not None]
         memory_tokens = self._estimate_tokens_messages(memory_messages)
 
         if strategy == "branching":
@@ -634,6 +906,10 @@ class SimpleChatAgent:
             "short_term_count": len(short_history),
             "active_profile_id": active_profile_id,
             "profile_applied": profile_msg is not None,
+            "task_phase": task_state["phase"],
+            "task_current_step": task_state["current_step"],
+            "task_expected_action": task_state["expected_action"],
+            "task_is_paused": task_state["is_paused"],
         }
         return request_messages, meta
 
@@ -678,6 +954,7 @@ class SimpleChatAgent:
         context_strategy: str = "sliding",
         branch_id: str = "main",
         profile_id: str | None = None,
+        resume: bool = False,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
@@ -710,12 +987,42 @@ class SimpleChatAgent:
                 "short_term_count": len(incoming),
                 "active_profile_id": active_profile_id,
                 "profile_applied": bool(self._profile_system_message(profile)),
+                "task_phase": "planning",
+                "task_current_step": "",
+                "task_expected_action": "",
+                "task_is_paused": False,
             }
             user_msg = incoming[-1]
             state = self._get_conversation_state(conversation_id)
         else:
             state = self._get_conversation_state(conversation_id)
             user_msg = incoming[0]
+            current_task_state = self._normalize_task_state(state.get("task_state", {}))
+            if current_task_state.get("status") == "paused" and not resume:
+                raise ValueError("Task is paused. Resume generation to continue.")
+            if resume and current_task_state.get("status") == "paused":
+                state["task_state"] = self._transition_task_state(
+                    task_state=current_task_state,
+                    event=TASK_EVENT_RESUME,
+                )
+                extra = user_msg.content.strip()
+                resume_text = (
+                    "Continue from the paused point without repeating previous explanation."
+                )
+                if extra:
+                    resume_text += f"\nAdditional instruction from user:\n{extra}"
+                user_msg = Message(role="user", content=resume_text)
+            elif self._is_task_intent_message(user_msg.content):
+                state["task_state"] = self._transition_task_state(
+                    task_state=current_task_state,
+                    event=TASK_EVENT_NEW_TASK,
+                )
+            current_task_state = self._normalize_task_state(state.get("task_state", {}))
+            include_task_state = (
+                resume
+                or bool(current_task_state.get("task_active", False))
+                or self._is_task_intent_message(user_msg.content)
+            )
             self._update_facts(state, user_msg.content)
             working_keys = self._auto_update_working_memory(state, user_msg.content)
             auto_keys = self._auto_update_long_term(user_msg.content)
@@ -725,6 +1032,7 @@ class SimpleChatAgent:
                 incoming_user=user_msg,
                 profile=profile,
                 active_profile_id=active_profile_id,
+                include_task_state=include_task_state,
                 strategy=strategy,
                 branch_id=branch_id,
                 context_limit=context_limit,
@@ -734,10 +1042,14 @@ class SimpleChatAgent:
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
+        paused_during_stream = False
         async for result in provider.stream_chat(request_messages, model, normalized_temperature):
             if result.text:
                 assistant_chunks.append(result.text)
                 yield result
+                if self._normalize_task_state(state.get("task_state", {})).get("status") == "paused":
+                    paused_during_stream = True
+                    break
             if result.meta is not None:
                 provider_meta = result.meta
 
@@ -747,6 +1059,18 @@ class SimpleChatAgent:
 
         assistant_msg = Message(role="assistant", content=assistant_text)
         self._append_turn(state, strategy, context_meta["branch_id"], user_msg, assistant_msg)
+        current_task_state = self._normalize_task_state(state.get("task_state", {}))
+        if paused_during_stream:
+            task_state_after = self._transition_task_state(
+                task_state=current_task_state,
+                event=TASK_EVENT_PAUSE,
+            )
+        else:
+            task_state_after = self._transition_task_state(
+                task_state=current_task_state,
+                event=TASK_EVENT_ASSISTANT_TURN_COMPLETED,
+            )
+        state["task_state"] = task_state_after
 
         prompt_tokens = int((provider_meta or {}).get("prompt_tokens", 0))
         completion_tokens = int((provider_meta or {}).get("completion_tokens", 0))
@@ -804,6 +1128,15 @@ class SimpleChatAgent:
             "branch_id": context_meta["branch_id"],
             "active_profile_id": context_meta.get("active_profile_id", active_profile_id),
             "profile_applied": bool(context_meta.get("profile_applied", False)),
+            "task_phase": task_state_after.get("phase", context_meta.get("task_phase", "planning")),
+            "task_current_step": task_state_after.get(
+                "current_step", context_meta.get("task_current_step", "")
+            ),
+            "task_expected_action": task_state_after.get(
+                "expected_action", context_meta.get("task_expected_action", "")
+            ),
+            "task_is_paused": bool(task_state_after.get("is_paused", False)),
+            "paused_during_stream": paused_during_stream,
             "memory_short_notes_count": int(context_meta.get("short_term_count", WINDOW_SIZE_MESSAGES)),
             "memory_working_count": len(working_memory),
             "memory_long_count": len(long_term),
