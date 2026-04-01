@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import re
 import time
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -324,8 +325,24 @@ class SimpleChatAgent:
         for key, val in data.items():
             k = str(key).strip().lower()
             v = str(val).strip()
-            if k in LONG_TERM_ALLOWED_KEYS and v:
-                filtered[k] = v[:320]
+            if k not in LONG_TERM_ALLOWED_KEYS or not v:
+                continue
+            # Keep only compact user-profile facts in long-term memory.
+            if k == "budget":
+                if len(v) > 48:
+                    continue
+                if not re.search(r"\d", v):
+                    continue
+                filtered[k] = v[:48]
+                continue
+            if k == "deadline":
+                if len(v) > 64:
+                    continue
+                filtered[k] = v[:64]
+                continue
+            if len(v) > 220:
+                continue
+            filtered[k] = v[:220]
         return filtered
 
     @staticmethod
@@ -675,10 +692,15 @@ class SimpleChatAgent:
                 long_term["profile"] = line[:320]
                 updated_keys.append("profile")
             if "бюджет" in lower and len(line) <= 120:
-                long_term["budget"] = line[:320]
-                updated_keys.append("budget")
+                match = re.search(r"(\d[\d\s]{1,20})(?:\s*[₽$€]| ?руб| ?rub)?", line, flags=re.I)
+                if match:
+                    budget_val = " ".join(match.group(1).split())
+                    if "₽" in line or "руб" in lower or "rub" in lower:
+                        budget_val = f"{budget_val} ₽"
+                    long_term["budget"] = budget_val[:48]
+                    updated_keys.append("budget")
             if "дедлайн" in lower and len(line) <= 120:
-                long_term["deadline"] = line[:320]
+                long_term["deadline"] = line[:64]
                 updated_keys.append("deadline")
 
         self.global_memory["long_term"] = self._sanitize_long_term(
