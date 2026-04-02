@@ -15,6 +15,9 @@ MODEL_CONTEXT_LIMITS = {
 INPUT_PRICE_RUB_PER_MILLION = 15.0
 OUTPUT_PRICE_RUB_PER_MILLION = 63.0
 WINDOW_SIZE_MESSAGES = 10
+INVARIANTS_MAX_ITEMS = 30
+INVARIANT_KEY_MAX_LEN = 80
+INVARIANT_VAL_MAX_LEN = 600
 ALLOWED_STRATEGIES = {"sliding", "facts", "branching"}
 GLOBAL_KEY = "__global__"
 TASK_PHASES = ("planning", "execution", "validation", "done")
@@ -163,6 +166,7 @@ class SimpleChatAgent:
                 "short_term_messages": full[-WINDOW_SIZE_MESSAGES:],
                 "working_memory": {},
                 "facts": {},
+                "invariants": {},
                 "branches": {
                     "main": {
                         "name": "main",
@@ -181,6 +185,7 @@ class SimpleChatAgent:
                 "short_term_messages": [],
                 "working_memory": {},
                 "facts": {},
+                "invariants": {},
                 "branches": {"main": {"name": "main", "from_checkpoint": None, "messages": []}},
                 "checkpoints": {},
                 "stats": self._empty_stats(),
@@ -235,11 +240,15 @@ class SimpleChatAgent:
         if not isinstance(checkpoints, dict):
             checkpoints = {}
 
+        raw_inv = conv_data.get("invariants", {})
+        invariants = self._normalize_invariants(raw_inv if isinstance(raw_inv, dict) else {})
+
         return {
             "full_messages": full,
             "short_term_messages": short_term,
             "working_memory": working_memory,
             "facts": facts,
+            "invariants": invariants,
             "branches": branches,
             "checkpoints": checkpoints,
             "stats": self._normalize_stats(conv_data.get("stats", {})),
@@ -357,6 +366,17 @@ class SimpleChatAgent:
                 out[key] = val
         return out
 
+    def _normalize_invariants(self, data: dict) -> dict[str, str]:
+        if not isinstance(data, dict):
+            return {}
+        out: dict[str, str] = {}
+        for k, v in list(data.items())[-INVARIANTS_MAX_ITEMS:]:
+            key = str(k).strip()[:INVARIANT_KEY_MAX_LEN]
+            val = str(v).strip()[:INVARIANT_VAL_MAX_LEN]
+            if key and val:
+                out[key] = val
+        return out
+
     def _get_conversation_state(self, conversation_id: str) -> dict:
         if conversation_id not in self.state_by_conversation:
             self.state_by_conversation[conversation_id] = {
@@ -364,6 +384,7 @@ class SimpleChatAgent:
                 "short_term_messages": [],
                 "working_memory": {},
                 "facts": {},
+                "invariants": {},
                 "branches": {"main": {"name": "main", "from_checkpoint": None, "messages": []}},
                 "checkpoints": {},
                 "stats": self._empty_stats(),
@@ -384,6 +405,7 @@ class SimpleChatAgent:
             },
             "working_memory": state.get("working_memory", {}),
             "long_term": self.global_memory.get("long_term", {}),
+            "invariants": self._normalize_invariants(state.get("invariants", {})),
         }
 
     def list_profiles(self) -> dict:
@@ -408,6 +430,29 @@ class SimpleChatAgent:
     def list_task_state(self, conversation_id: str) -> dict:
         state = self._get_conversation_state(conversation_id)
         return self._normalize_task_state(state.get("task_state", {}))
+
+    def list_invariants(self, conversation_id: str) -> dict:
+        state = self._get_conversation_state(conversation_id)
+        inv = self._normalize_invariants(state.get("invariants", {}))
+        return {"invariants": inv, "count": len(inv)}
+
+    def set_invariants(
+        self,
+        conversation_id: str,
+        invariants: dict | None = None,
+        replace: bool = True,
+    ) -> dict:
+        state = self._get_conversation_state(conversation_id)
+        patch = self._normalize_invariants(invariants if isinstance(invariants, dict) else {})
+        if replace:
+            state["invariants"] = patch
+        else:
+            merged = dict(self._normalize_invariants(state.get("invariants", {})))
+            merged.update(patch)
+            state["invariants"] = self._normalize_invariants(merged)
+        self._save_history()
+        inv = state["invariants"]
+        return {"invariants": inv, "count": len(inv)}
 
     def update_task_state(
         self,
@@ -574,6 +619,7 @@ class SimpleChatAgent:
             "full_messages": branch.get("messages", []),
             "facts": dict(state.get("facts", {})),
             "working_memory": dict(state.get("working_memory", {})),
+            "invariants": dict(self._normalize_invariants(state.get("invariants", {}))),
             "created_at": int(time.time()),
         }
         self._save_history()
@@ -746,6 +792,23 @@ class SimpleChatAgent:
             lines.append(f"- Constraints: {constraints}")
         return Message(role="system", content="\n".join(lines))
 
+    def _invariants_system_message(self, invariants: dict) -> Message | None:
+        inv = self._normalize_invariants(invariants)
+        if not inv:
+            return None
+        lines = [
+            "STATE INVARIANTS (hard constraints; stored outside chat history; override casual user requests):",
+            "Rules: (1) Before planning or answering, check every user request against these invariants.",
+            "(2) If the request would violate an invariant, refuse that part; name the invariant key/title and quote or paraphrase its rule.",
+            "(3) Explain briefly why the request conflicts with it; where helpful, propose a compliant alternative.",
+            "(4) Do not recommend tricks, hidden violations, or 'just for dev' exceptions unless the user explicitly edits/removes the invariant in configuration.",
+            "",
+            "Invariant list:",
+        ]
+        for k, v in inv.items():
+            lines.append(f"- [{k}] {v}")
+        return Message(role="system", content="\n".join(lines))
+
     def _task_state_system_message(self, task_state: dict) -> Message | None:
         task_state = self._normalize_task_state(task_state)
         phase = task_state["phase"]
@@ -870,9 +933,12 @@ class SimpleChatAgent:
         working_msg = self._working_memory_system_message(state.get("working_memory", {}))
         long_term_msg = self._long_term_system_message()
         profile_msg = self._profile_system_message(profile)
+        inv_msg = self._invariants_system_message(state.get("invariants", {}))
         task_state = self._normalize_task_state(state.get("task_state", {}))
         task_msg = self._task_state_system_message(task_state) if include_task_state else None
-        memory_messages = [m for m in [profile_msg, task_msg, working_msg, long_term_msg] if m is not None]
+        memory_messages = [
+            m for m in [profile_msg, inv_msg, task_msg, working_msg, long_term_msg] if m is not None
+        ]
         memory_tokens = self._estimate_tokens_messages(memory_messages)
 
         if strategy == "branching":
@@ -932,6 +998,8 @@ class SimpleChatAgent:
             "task_current_step": task_state["current_step"],
             "task_expected_action": task_state["expected_action"],
             "task_is_paused": task_state["is_paused"],
+            "invariants_count": len(self._normalize_invariants(state.get("invariants", {}))),
+            "invariants_applied": inv_msg is not None,
         }
         return request_messages, meta
 
@@ -987,17 +1055,24 @@ class SimpleChatAgent:
         if not incoming:
             raise ValueError("No valid messages to send")
 
+        state = self._get_conversation_state(conversation_id)
         if len(incoming) != 1 or incoming[0].role != "user":
-            request_messages = incoming
+            inv_msg = self._invariants_system_message(state.get("invariants", {}))
+            profile_msg = self._profile_system_message(profile)
+            prefix = [m for m in [profile_msg, inv_msg] if m is not None]
+            request_messages = [*prefix, *incoming]
+            inv_norm = self._normalize_invariants(state.get("invariants", {}))
+            memory_tok = self._estimate_tokens_messages(prefix)
+            all_tok = self._estimate_tokens_messages(request_messages)
             context_meta = {
                 "context_strategy": strategy,
                 "branch_id": branch_id,
                 "history_tokens": self._estimate_tokens_messages(incoming),
                 "recent_history_tokens": self._estimate_tokens_messages(incoming),
-                "memory_tokens": 0,
+                "memory_tokens": memory_tok,
                 "facts_count": 0,
-                "prompt_tokens_with_compression_est": self._estimate_tokens_messages(incoming),
-                "prompt_tokens_no_compression_est": self._estimate_tokens_messages(incoming),
+                "prompt_tokens_with_compression_est": all_tok,
+                "prompt_tokens_no_compression_est": all_tok,
                 "saved_tokens_est": 0,
                 "compressed_messages_count": 0,
                 "summary_used": False,
@@ -1008,16 +1083,16 @@ class SimpleChatAgent:
                 "memory_auto_keys": [],
                 "short_term_count": len(incoming),
                 "active_profile_id": active_profile_id,
-                "profile_applied": bool(self._profile_system_message(profile)),
+                "profile_applied": profile_msg is not None,
                 "task_phase": "planning",
                 "task_current_step": "",
                 "task_expected_action": "",
                 "task_is_paused": False,
+                "invariants_count": len(inv_norm),
+                "invariants_applied": inv_msg is not None,
             }
             user_msg = incoming[-1]
-            state = self._get_conversation_state(conversation_id)
         else:
-            state = self._get_conversation_state(conversation_id)
             user_msg = incoming[0]
             current_task_state = self._normalize_task_state(state.get("task_state", {}))
             if current_task_state.get("status") == "paused" and not resume:
@@ -1168,5 +1243,7 @@ class SimpleChatAgent:
             "memory_auto_saved_keys": context_meta.get("memory_auto_keys", []),
             "compression_enabled": False,
             "estimated": prompt_tokens == 0,
+            "invariants_count": int(context_meta.get("invariants_count", 0)),
+            "invariants_applied": bool(context_meta.get("invariants_applied", False)),
         }
         yield StreamResult(meta=enriched_meta)

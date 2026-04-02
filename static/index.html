@@ -618,6 +618,14 @@
           <div style="display:grid; gap:8px;">
             <button type="button" id="memoryRefreshBtn">Обновить память</button>
             <pre id="memoryView" style="margin:0; max-height:180px; overflow:auto; background:var(--bg-tertiary); border:1px solid var(--border); border-radius:8px; padding:8px; color:var(--text-secondary); font-size:12px;">(пока пусто)</pre>
+            <div class="c-label" style="margin-top:8px;">Инварианты (хранятся вне диалога)</div>
+            <div class="c-help" style="font-size:11px; color:var(--text-muted); margin-bottom:4px;">
+              Каждая строка: <code>ключ: текст правила</code>. Ассистент обязан им следовать и отказывать при конфликте с запросом.
+            </div>
+            <textarea class="c-input" id="invariantsInput" rows="4" placeholder="architecture: монолит на FastAPI, без микросервисов&#10;stack: только Python; без Node.js&#10;business: платежи только через ЮKassa"></textarea>
+            <div style="display:flex; gap:8px;">
+              <button type="button" id="saveInvariantsBtn">Сохранить инварианты</button>
+            </div>
           </div>
         </div>
         <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
@@ -877,6 +885,7 @@ function buildMetaHTML(meta) {
       : 'Sliding Window';
   const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
+  const invInfo = `<div class="meta-item">Инварианты: <span class="meta-val">${meta.invariants_count ?? 0}</span>${meta.invariants_applied ? ' <span class="meta-val">(в контексте)</span>' : ''}</div>`;
   const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}</div>`;
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
     ? `<div class="meta-item">Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span> (${(meta.memory_auto_saved_keys || []).join(', ')})</div>`
@@ -902,6 +911,7 @@ function buildMetaHTML(meta) {
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
       ${modeInfo}
       ${profileInfo}
+      ${invInfo}
       ${taskInfo}
       ${autoWorkingInfo}
       ${autoMemoryInfo}
@@ -957,6 +967,8 @@ const checkpointBtn = $('#checkpointBtn');
 const createBranchesBtn = $('#createBranchesBtn');
 const memoryRefreshBtn = $('#memoryRefreshBtn');
 const memoryView = $('#memoryView');
+const invariantsInput = $('#invariantsInput');
+const saveInvariantsBtn = $('#saveInvariantsBtn');
 const profileNameInput = $('#profileNameInput');
 const profileStyleInput = $('#profileStyleInput');
 const profileFormatInput = $('#profileFormatInput');
@@ -1036,6 +1048,25 @@ async function refreshBranches(chat) {
   } catch {}
 }
 
+function invariantsObjectToText(obj) {
+  if (!obj || typeof obj !== 'object') return '';
+  return Object.entries(obj).map(([k, v]) => `${k}: ${v}`).join('\n');
+}
+
+function parseInvariantsText(text) {
+  const inv = {};
+  for (const line of (text || '').split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const i = trimmed.indexOf(':');
+    if (i <= 0) continue;
+    const k = trimmed.slice(0, i).trim();
+    const v = trimmed.slice(i + 1).trim();
+    if (k && v) inv[k] = v;
+  }
+  return inv;
+}
+
 async function refreshMemoryView(chat) {
   if (!chat) return;
   try {
@@ -1043,6 +1074,9 @@ async function refreshMemoryView(chat) {
     const resp = await fetch(url);
     const data = await resp.json();
     memoryView.textContent = JSON.stringify(data, null, 2);
+    if (data.invariants && typeof data.invariants === 'object') {
+      invariantsInput.value = invariantsObjectToText(data.invariants);
+    }
   } catch (err) {
     memoryView.textContent = `Ошибка чтения памяти: ${err.message}`;
   }
@@ -1188,6 +1222,24 @@ memoryRefreshBtn.addEventListener('click', async () => {
   const chat = getChat(activeChatId);
   if (!chat) return;
   await refreshMemoryView(chat);
+});
+
+saveInvariantsBtn.addEventListener('click', async () => {
+  if (!activeChatId) return;
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  try {
+    await fetch('/api/invariants', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        conversation_id: chat.id,
+        replace: true,
+        invariants: parseInvariantsText(invariantsInput.value),
+      }),
+    });
+    await refreshMemoryView(chat);
+  } catch {}
 });
 
 pauseToggleBtn.addEventListener('click', async () => {

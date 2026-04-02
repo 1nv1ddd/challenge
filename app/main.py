@@ -136,6 +136,25 @@ async def list_task_state(conversation_id: str):
     return agent.list_task_state(conversation_id)
 
 
+@app.get("/api/invariants")
+async def list_invariants(conversation_id: str):
+    return agent.list_invariants(conversation_id)
+
+
+@app.post("/api/invariants")
+async def set_invariants(request: Request):
+    body = await request.json()
+    conversation_id: str = body.get("conversation_id", "default")
+    replace: bool = bool(body.get("replace", True))
+    raw = body.get("invariants")
+    invariants = raw if isinstance(raw, dict) else {}
+    return agent.set_invariants(
+        conversation_id=conversation_id,
+        invariants=invariants,
+        replace=replace,
+    )
+
+
 @app.post("/api/task-state")
 async def update_task_state(request: Request):
     body = await request.json()
