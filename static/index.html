@@ -614,6 +614,21 @@
           </div>
         </div>
         <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
+          <div class="c-label">Задача (этапы)</div>
+          <div style="font-size:12px; color:var(--text-secondary);">
+            Фаза: <strong id="taskPhaseLabel">—</strong>
+          </div>
+          <div style="font-size:11px; color:var(--text-muted); margin-top:4px;" id="taskAllowedNext">Следующие допустимые: —</div>
+          <div style="font-size:11px; color:var(--danger); min-height:1.2em; margin-top:4px;" id="taskFsmError"></div>
+          <div class="c-help" style="font-size:11px; color:var(--text-muted); margin-top:6px;">
+            Planning→plan_approved и validation→done сами не ставятся после ответа модели: нужен явный текст (утверждение плана / закрытие задачи) или «Следующий этап». Остальные переходы могут сдвигаться на шаг за полный ответ. Кнопки — ручной / сброс.
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:8px;">
+            <button type="button" id="taskNextPhaseBtn">Следующий этап</button>
+            <button type="button" id="taskResetFsmBtn">Сброс</button>
+          </div>
+        </div>
+        <div class="c-row" style="border-top:1px solid var(--border); padding-top:10px; margin-top:4px;">
           <div class="c-label">Слои памяти</div>
           <div style="display:grid; gap:8px;">
             <button type="button" id="memoryRefreshBtn">Обновить память</button>
@@ -703,7 +718,10 @@ async function init() {
   profileSel.value = defaultProfileId;
   fillProfileEditor(defaultProfileId);
   applyTaskStateToControls({
-    is_paused: false
+    is_paused: false,
+    phase: 'planning',
+    allowed_next_phases: ['plan_approved'],
+    ok: true,
   });
 
   renderChatsList();
@@ -886,7 +904,13 @@ function buildMetaHTML(meta) {
   const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
   const invInfo = `<div class="meta-item">Инварианты: <span class="meta-val">${meta.invariants_count ?? 0}</span>${meta.invariants_applied ? ' <span class="meta-val">(в контексте)</span>' : ''}</div>`;
-  const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}</div>`;
+  const taskAllowed = Array.isArray(meta.task_allowed_next_phases) && meta.task_allowed_next_phases.length
+    ? ` · далее: ${meta.task_allowed_next_phases.join(', ')}`
+    : '';
+  const taskGuard = meta.workflow_guard_applied
+    ? ' · <span class="meta-val" title="Сработал блок обхода валидации">guard</span>'
+    : '';
+  const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}${taskAllowed}${taskGuard}</div>`;
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
     ? `<div class="meta-item">Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span> (${(meta.memory_auto_saved_keys || []).join(', ')})</div>`
     : '';
@@ -1084,7 +1108,19 @@ async function refreshMemoryView(chat) {
 
 function applyTaskStateToControls(taskState) {
   if (!taskState) return;
+  const errEl = $('#taskFsmError');
+  if (errEl) errEl.textContent = '';
+  if (taskState.ok === false && taskState.error && errEl) {
+    errEl.textContent = taskState.error;
+  }
   activeTaskState = taskState;
+  const tl = $('#taskPhaseLabel');
+  const an = $('#taskAllowedNext');
+  if (tl) tl.textContent = taskState.phase || '—';
+  if (an) {
+    const a = taskState.allowed_next_phases;
+    an.textContent = 'Следующие допустимые: ' + (Array.isArray(a) && a.length ? a.join(', ') : '(нет)');
+  }
   renderActionButton();
 }
 
@@ -1249,6 +1285,9 @@ pauseToggleBtn.addEventListener('click', async () => {
   }
   send();
 });
+
+$('#taskNextPhaseBtn').addEventListener('click', () => updateTaskState('next'));
+$('#taskResetFsmBtn').addEventListener('click', () => updateTaskState('reset'));
 
 saveProfileBtn.addEventListener('click', async () => {
   const selectedId = (profileSel.value || '').trim();
