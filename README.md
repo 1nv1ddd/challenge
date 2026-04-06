@@ -30,6 +30,25 @@ uvicorn app.main:app --reload
 # Открыть http://localhost:8000
 ```
 
+## MCP (Model Context Protocol) — минимальный клиент
+
+В проекте: **SDK** `mcp` в `requirements.txt`, локальный **сервер** `scripts/minimal_mcp_server.py` (stdio), **клиент** `scripts/mcp_list_tools.py` (соединение + `list_tools`).
+
+```bash
+# уже после pip install -r requirements.txt
+python scripts/mcp_list_tools.py
+```
+
+Ожидается в stderr строка про успешное подключение, в stdout — список инструментов (`ping`, `echo`). JSON: `python scripts/mcp_list_tools.py --json`.
+
+Проверка задания (автоматически):
+
+```bash
+python -m unittest tests.test_mcp_connection -v
+```
+
+Другой MCP-процесс (пример): `MCP_CMD=npx` и `MCP_ARGS='["-y","@modelcontextprotocol/server-everything"]'` перед запуском клиента (нужен Node.js).
+
 ## Деплой на VPS (Docker)
 
 ```bash
