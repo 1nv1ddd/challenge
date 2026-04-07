@@ -26,7 +26,9 @@
       --assistant-bubble: #1e1e1e;
       --danger: #e74c3c;
       --radius: 12px;
-      --sidebar-width: 260px;
+      --sidebar-width: 300px;
+      --mcp-success: #2ecc71;
+      --mcp-success-bg: rgba(46, 204, 113, 0.12);
     }
 
     body {
@@ -74,6 +76,154 @@
       transition: background 0.2s;
     }
     .new-chat-btn:hover { background: var(--accent-hover); }
+
+    /* ---- MCP panel (sidebar) ---- */
+    .mcp-wrap {
+      flex-shrink: 0;
+      max-height: 44vh;
+      overflow-y: auto;
+      border-bottom: 1px solid var(--border);
+      padding: 0 12px 10px;
+    }
+    .mcp-wrap::-webkit-scrollbar { width: 4px; }
+    .mcp-wrap::-webkit-scrollbar-thumb { background: #444; border-radius: 2px; }
+
+    .mcp-panel-title {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--text-secondary);
+      padding: 10px 4px 6px;
+    }
+    .mcp-tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 10px;
+    }
+    .mcp-tab {
+      flex: 1;
+      font-size: 11px;
+      font-family: inherit;
+      padding: 6px 4px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-tertiary);
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+    }
+    .mcp-tab:hover { color: var(--text-primary); border-color: #555; }
+    .mcp-tab.active {
+      background: rgba(124, 92, 252, 0.2);
+      border-color: var(--accent);
+      color: var(--text-primary);
+    }
+    .mcp-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      margin-bottom: 8px;
+      font-size: 11px;
+      color: var(--text-secondary);
+    }
+    .mcp-field input {
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      padding: 7px 8px;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      outline: none;
+    }
+    .mcp-field input:focus { border-color: var(--accent); }
+    .mcp-actions {
+      display: flex;
+      gap: 6px;
+      margin: 10px 0 8px;
+    }
+    .mcp-actions button {
+      flex: 1;
+      font-size: 12px;
+      font-family: inherit;
+      padding: 8px 6px;
+      border-radius: 6px;
+      border: none;
+      cursor: pointer;
+      font-weight: 500;
+      transition: opacity 0.15s;
+    }
+    #mcpConnectBtn {
+      background: var(--accent);
+      color: #fff;
+    }
+    #mcpConnectBtn:hover { background: var(--accent-hover); }
+    #mcpDisconnectBtn {
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+    }
+    #mcpDisconnectBtn:hover { border-color: #666; }
+    .mcp-stub {
+      font-size: 12px;
+      color: var(--text-secondary);
+      line-height: 1.45;
+      padding: 4px 2px 8px;
+    }
+    .mcp-tab-body.hidden { display: none; }
+
+    .mcp-status {
+      font-size: 12px;
+      line-height: 1.4;
+      padding: 8px 10px;
+      border-radius: 8px;
+      margin: 6px 0 8px;
+    }
+    .mcp-status.idle {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
+    }
+    .mcp-status.ok {
+      background: var(--mcp-success-bg);
+      border: 1px solid var(--mcp-success);
+      color: #b8f0c8;
+    }
+    .mcp-status.err {
+      background: rgba(231, 76, 60, 0.12);
+      border: 1px solid var(--danger);
+      color: #f5a9a0;
+    }
+
+    .mcp-tools-head {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .mcp-tools-list {
+      list-style: none;
+      font-size: 12px;
+      font-family: ui-monospace, monospace;
+      color: var(--text-primary);
+    }
+    .mcp-tools-list li {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 6px;
+      border-radius: 4px;
+    }
+    .mcp-tools-list li:nth-child(odd) { background: rgba(255,255,255,0.03); }
+    .mcp-tools-list .mcp-tool-icon { opacity: 0.5; font-size: 11px; }
+    .mcp-tools-summary {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--border);
+    }
 
     .chats-list {
       flex: 1;
@@ -546,6 +696,34 @@
       <h1><span>⚡</span> AI Chat Hub</h1>
     </div>
     <button class="new-chat-btn" id="newChatBtn">+ Новый чат</button>
+    <div class="mcp-wrap">
+      <div class="mcp-panel-title">MCP</div>
+      <div class="mcp-tabs" role="tablist">
+        <button type="button" class="mcp-tab active" data-tab="local" role="tab" aria-selected="true">Локальный (stdio)</button>
+        <button type="button" class="mcp-tab" data-tab="remote" role="tab" aria-selected="false">Удалённый (HTTP)</button>
+      </div>
+      <div class="mcp-tab-body" id="mcpLocalBody" role="tabpanel">
+        <label class="mcp-field"><span>Путь к скрипту</span>
+          <input type="text" id="mcpScriptPath" placeholder="scripts/minimal_mcp_server.py" autocomplete="off" />
+        </label>
+        <label class="mcp-field"><span>Имя сервера</span>
+          <input type="text" id="mcpServerName" placeholder="MCP Server" autocomplete="off" />
+        </label>
+        <div class="mcp-actions">
+          <button type="button" id="mcpConnectBtn">Подключить</button>
+          <button type="button" id="mcpDisconnectBtn">Отключить</button>
+        </div>
+      </div>
+      <div class="mcp-tab-body hidden" id="mcpRemoteBody" role="tabpanel">
+        <p class="mcp-stub">Подключение по HTTP/SSE к удалённому MCP пока не реализовано. Используйте локальный скрипт.</p>
+      </div>
+      <div id="mcpStatusBox" class="mcp-status idle">Не подключено</div>
+      <div class="mcp-tools-block">
+        <div class="mcp-tools-head">Доступные инструменты (<span id="mcpToolsCount">0</span>)</div>
+        <ul class="mcp-tools-list" id="mcpToolsList"></ul>
+        <div class="mcp-tools-summary" id="mcpToolsSummary">Все активные инструменты (0)</div>
+      </div>
+    </div>
     <div class="chats-list" id="chatsList"></div>
   </aside>
 
@@ -683,6 +861,16 @@ const pauseToggleBtn = $('#pauseToggleBtn');
 const chatsList   = $('#chatsList');
 const sidebar     = $('#sidebar');
 const overlay     = $('#overlay');
+const mcpScriptPath = $('#mcpScriptPath');
+const mcpServerName = $('#mcpServerName');
+const mcpConnectBtn = $('#mcpConnectBtn');
+const mcpDisconnectBtn = $('#mcpDisconnectBtn');
+const mcpStatusBox = $('#mcpStatusBox');
+const mcpToolsList = $('#mcpToolsList');
+const mcpToolsCount = $('#mcpToolsCount');
+const mcpToolsSummary = $('#mcpToolsSummary');
+const mcpLocalBody = $('#mcpLocalBody');
+const mcpRemoteBody = $('#mcpRemoteBody');
 
 let providerName = '';
 let modelList = [];
@@ -726,6 +914,10 @@ async function init() {
 
   renderChatsList();
   if (chats.length) selectChat(chats[0].id);
+
+  loadMcpFormFromStorage();
+  wireMcpPanel();
+  await refreshMcpStatus();
 }
 
 function syncChatModel() {
@@ -972,7 +1164,113 @@ function scrollDown() {
 }
 
 function escapeHtml(s) {
-  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+const MCP_LS_SCRIPT = 'aichat_mcp_script';
+const MCP_LS_NAME = 'aichat_mcp_name';
+
+function loadMcpFormFromStorage() {
+  const s = localStorage.getItem(MCP_LS_SCRIPT);
+  const n = localStorage.getItem(MCP_LS_NAME);
+  mcpScriptPath.value = s || 'scripts/minimal_mcp_server.py';
+  mcpServerName.value = n || 'Minimal MCP';
+}
+
+function saveMcpFormToStorage() {
+  localStorage.setItem(MCP_LS_SCRIPT, mcpScriptPath.value.trim());
+  localStorage.setItem(MCP_LS_NAME, mcpServerName.value.trim());
+}
+
+function renderMcpFromState(s) {
+  const tools = s.tools || [];
+  const n = tools.length;
+  mcpToolsCount.textContent = String(n);
+  mcpToolsSummary.textContent = `Все активные инструменты (${n})`;
+  if (s.connected) {
+    mcpStatusBox.className = 'mcp-status ok';
+    mcpStatusBox.innerHTML = '✓ Статус: подключено к <strong>' + escapeHtml(s.server_name || 'MCP') + '</strong>';
+    mcpToolsList.innerHTML = tools.map(t =>
+      '<li><span class="mcp-tool-icon">✎</span>' + escapeHtml(t.name || '') + '</li>'
+    ).join('');
+  } else if (s.error) {
+    mcpStatusBox.className = 'mcp-status err';
+    mcpStatusBox.textContent = 'Ошибка: ' + s.error;
+    mcpToolsList.innerHTML = '';
+  } else {
+    mcpStatusBox.className = 'mcp-status idle';
+    mcpStatusBox.textContent = 'Не подключено';
+    mcpToolsList.innerHTML = '';
+  }
+}
+
+async function refreshMcpStatus() {
+  try {
+    const r = await fetch('/api/mcp/status');
+    const st = await r.json();
+    renderMcpFromState(st);
+  } catch {
+    mcpStatusBox.className = 'mcp-status err';
+    mcpStatusBox.textContent = 'Статус MCP недоступен';
+  }
+}
+
+let mcpWired = false;
+function wireMcpPanel() {
+  if (mcpWired) return;
+  mcpWired = true;
+  document.querySelectorAll('.mcp-tab').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.mcp-tab').forEach(b => {
+        b.classList.toggle('active', b === btn);
+        b.setAttribute('aria-selected', b === btn ? 'true' : 'false');
+      });
+      const tab = btn.dataset.tab;
+      mcpLocalBody.classList.toggle('hidden', tab !== 'local');
+      mcpRemoteBody.classList.toggle('hidden', tab !== 'remote');
+    });
+  });
+
+  mcpConnectBtn.addEventListener('click', async () => {
+    const activeTab = document.querySelector('.mcp-tab.active')?.dataset.tab;
+    if (activeTab === 'remote') return;
+    saveMcpFormToStorage();
+    mcpConnectBtn.disabled = true;
+    try {
+      const r = await fetch('/api/mcp/connect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transport: 'stdio',
+          script_path: mcpScriptPath.value.trim(),
+          server_name: mcpServerName.value.trim() || 'MCP Server',
+        }),
+      });
+      const data = await r.json();
+      if (!r.ok) {
+        const d = data.detail;
+        const msg = typeof d === 'string' ? d : (Array.isArray(d) ? d.map(x => x.msg || JSON.stringify(x)).join('; ') : JSON.stringify(d));
+        renderMcpFromState({ connected: false, error: msg, tools: [] });
+        return;
+      }
+      if (data.ok === false) {
+        renderMcpFromState(data);
+        return;
+      }
+      renderMcpFromState(data);
+    } catch (e) {
+      renderMcpFromState({ connected: false, error: String(e), tools: [] });
+    } finally {
+      mcpConnectBtn.disabled = false;
+    }
+  });
+
+  mcpDisconnectBtn.addEventListener('click', async () => {
+    try {
+      await fetch('/api/mcp/disconnect', { method: 'POST' });
+    } catch {}
+    await refreshMcpStatus();
+  });
 }
 
 // ---- Constraints ----

@@ -10,11 +10,13 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from .agent import SimpleChatAgent
+from .mcp_panel import router as mcp_router
 from .providers import AIProvider, RouterAIProvider
 
 load_dotenv()
 
 app = FastAPI(title="AI Chat Hub")
+app.include_router(mcp_router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 MEMORY_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_memory.json"
