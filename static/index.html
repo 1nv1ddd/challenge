@@ -200,23 +200,112 @@
       font-size: 11px;
       font-weight: 600;
       color: var(--text-secondary);
-      margin-bottom: 6px;
-    }
-    .mcp-tools-list {
-      list-style: none;
-      font-size: 12px;
-      font-family: ui-monospace, monospace;
-      color: var(--text-primary);
-    }
-    .mcp-tools-list li {
+      margin-bottom: 8px;
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 4px 6px;
-      border-radius: 4px;
     }
-    .mcp-tools-list li:nth-child(odd) { background: rgba(255,255,255,0.03); }
-    .mcp-tools-list .mcp-tool-icon { opacity: 0.5; font-size: 11px; }
+    .mcp-tools-head .mcp-tools-wrench { opacity: 0.75; font-size: 12px; }
+    .mcp-tools-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-primary);
+    }
+    .mcp-tool-acc {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: var(--bg-secondary);
+      overflow: hidden;
+    }
+    .mcp-tool-acc > summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 10px;
+      font-family: ui-monospace, monospace;
+      font-size: 12px;
+      font-weight: 500;
+      user-select: none;
+    }
+    .mcp-tool-acc > summary::-webkit-details-marker { display: none; }
+    .mcp-tool-acc > summary::before {
+      content: '▾';
+      font-size: 9px;
+      opacity: 0.65;
+      width: 12px;
+      text-align: center;
+      transition: transform 0.15s;
+    }
+    .mcp-tool-acc:not([open]) > summary::before {
+      transform: rotate(-90deg);
+    }
+    .mcp-tool-acc .mcp-tool-wrench { opacity: 0.55; font-size: 11px; }
+    .mcp-tool-body {
+      padding: 8px 10px 10px 14px;
+      border-top: 1px solid var(--border);
+      background: rgba(0,0,0,0.15);
+    }
+    .mcp-tool-desc {
+      font-size: 11px;
+      line-height: 1.45;
+      color: var(--text-secondary);
+      margin-bottom: 10px;
+    }
+    .mcp-tool-desc strong { color: var(--text-primary); font-weight: 600; }
+    .mcp-tool-params-lbl {
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 6px;
+    }
+    .mcp-json-tree {
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 11px;
+      line-height: 1.5;
+      color: #c9d1d9;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 8px 8px 10px;
+      max-height: 220px;
+      overflow: auto;
+    }
+    .mcp-json-tree .jt-root-wrap { margin: 0; }
+    .mcp-json-tree .jt-node { margin: 2px 0; }
+    .mcp-json-tree .jt-node > summary {
+      list-style: none;
+      cursor: pointer;
+      padding: 2px 0;
+      color: #79c0ff;
+    }
+    .mcp-json-tree .jt-node > summary::-webkit-details-marker { display: none; }
+    .mcp-json-tree .jt-node > summary::before {
+      content: '▸';
+      display: inline-block;
+      width: 12px;
+      font-size: 9px;
+      opacity: 0.8;
+      transition: transform 0.12s;
+    }
+    .mcp-json-tree .jt-node[open] > summary::before {
+      transform: rotate(90deg);
+    }
+    .mcp-json-tree .jt-children {
+      margin: 0 0 4px 14px;
+      padding-left: 8px;
+      border-left: 1px solid rgba(255,255,255,0.08);
+    }
+    .mcp-json-tree .jt-line { padding: 1px 0; word-break: break-word; }
+    .mcp-json-tree .jt-key { color: #7ee787; }
+    .mcp-json-tree .jt-colon { color: var(--text-secondary); }
+    .mcp-json-tree .jt-scalar { color: #ff7b72; }
+    .mcp-json-tree .jt-null { color: #8b949e; font-style: italic; }
+    .mcp-json-tree .jt-bracket { color: #8b949e; }
+    .mcp-json-tree .jt-meta { color: #8b949e; font-size: 10px; margin-left: 4px; }
     .mcp-tools-summary {
       font-size: 11px;
       color: var(--text-secondary);
@@ -719,8 +808,8 @@
       </div>
       <div id="mcpStatusBox" class="mcp-status idle">Не подключено</div>
       <div class="mcp-tools-block">
-        <div class="mcp-tools-head">Доступные инструменты (<span id="mcpToolsCount">0</span>)</div>
-        <ul class="mcp-tools-list" id="mcpToolsList"></ul>
+        <div class="mcp-tools-head"><span class="mcp-tools-wrench" aria-hidden="true">🔧</span> Доступные инструменты (<span id="mcpToolsCount">0</span>)</div>
+        <div class="mcp-tools-list" id="mcpToolsList"></div>
         <div class="mcp-tools-summary" id="mcpToolsSummary">Все активные инструменты (0)</div>
       </div>
     </div>
@@ -1182,6 +1271,83 @@ function saveMcpFormToStorage() {
   localStorage.setItem(MCP_LS_NAME, mcpServerName.value.trim());
 }
 
+/** Дерево JSON-схемы параметров (вложенные details). */
+function jsonTreeHtml(value, key) {
+  const hasKey = key !== null && key !== undefined;
+  const keyHtml = hasKey
+    ? '<span class="jt-key">' + escapeHtml(String(key)) + '</span><span class="jt-colon">: </span>'
+    : '';
+
+  if (value === null || value === undefined) {
+    return '<div class="jt-line">' + keyHtml + '<span class="jt-null">null</span></div>';
+  }
+  if (typeof value !== 'object') {
+    const shown = typeof value === 'string' ? JSON.stringify(value) : String(value);
+    return '<div class="jt-line">' + keyHtml + '<span class="jt-scalar">' + escapeHtml(shown) + '</span></div>';
+  }
+  if (Array.isArray(value)) {
+    if (!value.length) {
+      return '<div class="jt-line">' + keyHtml + '<span class="jt-bracket">[]</span></div>';
+    }
+    const inner = value.map((item, i) => jsonTreeHtml(item, '[' + i + ']')).join('');
+    return (
+      '<details class="jt-node" open><summary class="jt-sum">' +
+      keyHtml +
+      '<span class="jt-meta">[' + value.length + ']</span></summary><div class="jt-children">' +
+      inner +
+      '</div></details>'
+    );
+  }
+  const keys = Object.keys(value);
+  if (!keys.length) {
+    return '<div class="jt-line">' + keyHtml + '<span class="jt-bracket">{}</span></div>';
+  }
+  const inner = keys.map(k => jsonTreeHtml(value[k], k)).join('');
+  return (
+    '<details class="jt-node" open><summary class="jt-sum">' +
+    keyHtml +
+    '<span class="jt-meta">{' + keys.length + '}</span></summary><div class="jt-children">' +
+    inner +
+    '</div></details>'
+  );
+}
+
+function renderSchemaTree(schema) {
+  if (schema == null || schema === undefined) {
+    return '<div class="jt-line"><span class="jt-null">—</span></div>';
+  }
+  if (typeof schema !== 'object') {
+    return '<div class="jt-root-wrap">' + jsonTreeHtml(schema, null) + '</div>';
+  }
+  if (Array.isArray(schema)) {
+    return '<div class="jt-root-wrap">' + jsonTreeHtml(schema, null) + '</div>';
+  }
+  const keys = Object.keys(schema);
+  if (!keys.length) {
+    return '<div class="jt-line"><span class="jt-bracket">{}</span></div>';
+  }
+  return '<div class="jt-root-wrap">' + keys.map(k => jsonTreeHtml(schema[k], k)).join('') + '</div>';
+}
+
+function renderMcpToolAccordion(t) {
+  const name = escapeHtml(t.name || '');
+  const rawDesc = t.description != null ? String(t.description).trim() : '';
+  const desc = rawDesc ? escapeHtml(rawDesc) : '—';
+  const schema = t.input_schema != null ? t.input_schema : {};
+  const tree = renderSchemaTree(schema);
+  return (
+    '<details class="mcp-tool-acc">' +
+    '<summary><span class="mcp-tool-wrench" aria-hidden="true">🔧</span> ' +
+    name +
+    '</summary>' +
+    '<div class="mcp-tool-body">' +
+    '<div class="mcp-tool-desc"><strong>Описание:</strong> ' + desc + '</div>' +
+    '<div class="mcp-tool-params-lbl">Параметры:</div>' +
+    '<div class="mcp-json-tree">' + tree + '</div>' +
+    '</div></details>'
+  );
+}
+
 function renderMcpFromState(s) {
   const tools = s.tools || [];
   const n = tools.length;
@@ -1190,9 +1356,7 @@ function renderMcpFromState(s) {
   if (s.connected) {
     mcpStatusBox.className = 'mcp-status ok';
     mcpStatusBox.innerHTML = '✓ Статус: подключено к <strong>' + escapeHtml(s.server_name || 'MCP') + '</strong>';
-    mcpToolsList.innerHTML = tools.map(t =>
-      '<li><span class="mcp-tool-icon">✎</span>' + escapeHtml(t.name || '') + '</li>'
-    ).join('');
+    mcpToolsList.innerHTML = tools.map(renderMcpToolAccordion).join('');
   } else if (s.error) {
     mcpStatusBox.className = 'mcp-status err';
     mcpStatusBox.textContent = 'Ошибка: ' + s.error;

@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Request
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from mcp.shared.exceptions import McpError
+from mcp.types import Tool
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
@@ -62,6 +63,24 @@ def _resolve_script(user_path: str) -> Path:
     return p
 
 
+def _serialize_tool(t: Tool) -> dict[str, Any]:
+    raw_schema = getattr(t, "inputSchema", None) or {}
+    if hasattr(raw_schema, "model_dump"):
+        input_schema: Any = raw_schema.model_dump(mode="json")
+    elif isinstance(raw_schema, dict):
+        input_schema = raw_schema
+    else:
+        input_schema = {}
+    t_title = getattr(t, "title", None)
+    title = t_title if isinstance(t_title, str) else None
+    return {
+        "name": t.name,
+        "title": title,
+        "description": (t.description or "").strip() or None,
+        "input_schema": input_schema,
+    }
+
+
 async def _list_tools_stdio(script: Path) -> tuple[dict, list[dict]]:
     params = StdioServerParameters(
         command=sys.executable,
@@ -76,13 +95,7 @@ async def _list_tools_stdio(script: Path) -> tuple[dict, list[dict]]:
                 "version": init.serverInfo.version if init.serverInfo else None,
             }
             listed = await session.list_tools()
-            tools = [
-                {
-                    "name": t.name,
-                    "description": (t.description or "").strip() or None,
-                }
-                for t in listed.tools
-            ]
+            tools = [_serialize_tool(t) for t in listed.tools]
             return server_info, tools
 
 
