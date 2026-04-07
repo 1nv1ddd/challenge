@@ -12,6 +12,8 @@ from mcp.client.stdio import stdio_client
 from mcp.shared.exceptions import McpError
 from mcp.types import Tool
 
+from .mcp_stdio_client import call_tool_stdio
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 router = APIRouter(prefix="/api/mcp", tags=["mcp"])
@@ -147,3 +149,52 @@ async def mcp_disconnect() -> dict[str, Any]:
     global _state
     _state = _empty_state()
     return {"ok": True, **_state}
+
+
+def get_mcp_bridge() -> dict[str, Any] | None:
+    """Снимок подключения для агента (инструкция + список инструментов)."""
+    if not _state.get("connected") or not _state.get("script_path"):
+        return None
+    return {
+        "server_name": _state.get("server_name") or "MCP",
+        "tools": list(_state.get("tools") or []),
+    }
+
+
+def mcp_allowed_tool_names() -> frozenset[str]:
+    if not _state.get("connected"):
+        return frozenset()
+    names: list[str] = []
+    for t in _state.get("tools") or []:
+        if isinstance(t, dict) and t.get("name"):
+            names.append(str(t["name"]))
+    return frozenset(names)
+
+
+def tool_name_allowed(name: str) -> bool:
+    return name in mcp_allowed_tool_names()
+
+
+def _resolved_script_path() -> Path | None:
+    rel = _state.get("script_path")
+    if not rel:
+        return None
+    p = (PROJECT_ROOT / str(rel)).resolve()
+    root = PROJECT_ROOT.resolve()
+    try:
+        p.relative_to(root)
+    except ValueError:
+        return None
+    return p if p.is_file() else None
+
+
+async def invoke_mcp_tool(tool_name: str, arguments: dict[str, Any]) -> str:
+    if not tool_name_allowed(tool_name):
+        raise ValueError(
+            f"MCP: неизвестный инструмент «{tool_name}». "
+            f"Доступны: {sorted(mcp_allowed_tool_names())}"
+        )
+    script = _resolved_script_path()
+    if not script:
+        raise RuntimeError("MCP: путь к серверу недоступен")
+    return await call_tool_stdio(script, tool_name, dict(arguments or {}))

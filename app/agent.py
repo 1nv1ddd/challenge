@@ -7,6 +7,7 @@ import time
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+from . import mcp_panel
 from .providers import AIProvider, Message, StreamResult
 
 MODEL_CONTEXT_LIMITS = {
@@ -91,6 +92,41 @@ TASK_PHASE_MODEL_GUIDANCE: dict[str, str] = {
     ),
     "done": "Done: short wrap-up only.",
 }
+
+_MCP_FENCE_RE = re.compile(r"```mcp\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def _parse_mcp_tool_call(text: str) -> dict | None:
+    m = _MCP_FENCE_RE.search(text.strip())
+    if not m:
+        return None
+    try:
+        data = json.loads(m.group(1).strip())
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(data, dict) or "name" not in data:
+        return None
+    args = data.get("arguments")
+    if args is None:
+        args = {}
+    if not isinstance(args, dict):
+        return None
+    return {"name": str(data["name"]), "arguments": args}
+
+
+def _merge_provider_meta(prev: dict | None, new: dict | None) -> dict | None:
+    if not new:
+        return prev
+    if not prev:
+        return dict(new)
+    return {
+        **new,
+        "time_ms": int(prev.get("time_ms", 0)) + int(new.get("time_ms", 0)),
+        "prompt_tokens": int(prev.get("prompt_tokens", 0)) + int(new.get("prompt_tokens", 0)),
+        "completion_tokens": int(prev.get("completion_tokens", 0))
+        + int(new.get("completion_tokens", 0)),
+        "total_tokens": int(prev.get("total_tokens", 0)) + int(new.get("total_tokens", 0)),
+    }
 
 
 class SimpleChatAgent:
@@ -961,6 +997,46 @@ class SimpleChatAgent:
             lines.append(f"- Constraints: {constraints}")
         return Message(role="system", content="\n".join(lines))
 
+    @staticmethod
+    def _mcp_system_message_from_bridge(bridge: dict) -> Message | None:
+        if not bridge or not bridge.get("tools"):
+            return None
+        srv = bridge.get("server_name") or "MCP"
+        lines = [
+            f"Подключён MCP-сервер «{srv}». Ниже список инструментов (имя и описание).",
+            "",
+            "Если для ответа пользователю нужны внешние данные, сначала ответь ТОЛЬКО одним markdown-блоком "
+            '(без текста до или после, без пояснений):',
+            "```mcp",
+            '{"name": "<имя_инструмента>", "arguments": { ... }}',
+            "```",
+            "",
+            "Ключ arguments — объект JSON по схеме параметров инструмента (типы: число, строка, объект).",
+            "Если инструмент не нужен — отвечай обычным текстом, без блока ```mcp.",
+            "",
+            "Инструменты:",
+        ]
+        names: set[str] = set()
+        for t in bridge["tools"]:
+            if not isinstance(t, dict):
+                continue
+            nm = t.get("name") or ""
+            if nm:
+                names.add(str(nm))
+            desc = (t.get("description") or "").strip() or "—"
+            lines.append(f"- {nm}: {desc}")
+        if "get_recent_commits" in names:
+            lines.extend(
+                [
+                    "",
+                    "Пример для git (последние коммиты):",
+                    "```mcp",
+                    '{"name": "get_recent_commits", "arguments": {"count": 5}}',
+                    "```",
+                ]
+            )
+        return Message(role="system", content="\n".join(lines))
+
     def _invariants_system_message(self, invariants: dict) -> Message | None:
         inv = self._normalize_invariants(invariants)
         if not inv:
@@ -1378,20 +1454,94 @@ class SimpleChatAgent:
             context_meta["memory_auto_working_keys"] = working_keys
             context_meta["memory_auto_keys"] = auto_keys
 
+        bridge = mcp_panel.get_mcp_bridge()
+        mcp_instr = self._mcp_system_message_from_bridge(bridge) if bridge else None
+        if mcp_instr is not None:
+            request_messages = [*request_messages[:-1], mcp_instr, request_messages[-1]]
+
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
         paused_during_stream = False
-        async for result in provider.stream_chat(request_messages, model, normalized_temperature):
-            if result.text:
-                assistant_chunks.append(result.text)
-                yield result
+        mcp_tool_used: str | None = None
+
+        if bridge is not None:
+            first_chunks: list[str] = []
+            async for result in provider.stream_chat(
+                request_messages, model, normalized_temperature
+            ):
+                if result.text:
+                    first_chunks.append(result.text)
+                if result.meta is not None:
+                    provider_meta = _merge_provider_meta(provider_meta, result.meta)
                 if self._normalize_task_state(state.get("task_state", {})).get("status") == "paused":
                     paused_during_stream = True
                     break
-            if result.meta is not None:
-                provider_meta = result.meta
+            first_text = "".join(first_chunks)
+            if paused_during_stream:
+                if first_text:
+                    yield StreamResult(text=first_text)
+                assistant_text = first_text
+            else:
+                call = _parse_mcp_tool_call(first_text)
+                if (
+                    call
+                    and mcp_panel.tool_name_allowed(call["name"])
+                ):
+                    mcp_tool_used = call["name"]
+                    try:
+                        tool_payload = await mcp_panel.invoke_mcp_tool(
+                            call["name"], call.get("arguments") or {}
+                        )
+                    except Exception as exc:  # noqa: BLE001
+                        tool_payload = f"Ошибка выполнения: {exc}"
+                    assistant_plan = first_text.strip()
+                    follow_user = (
+                        f"Результат инструмента `{call['name']}`:\n{tool_payload}\n\n"
+                        "Используй эти данные и сформируй полный ответ пользователю на русском "
+                        "(понятно, без второго fence mcp / без повторного инструментального блока)."
+                    )
+                    follow = [
+                        *request_messages,
+                        Message(role="assistant", content=assistant_plan),
+                        Message(role="user", content=follow_user),
+                    ]
+                    assistant_chunks = []
+                    async for result in provider.stream_chat(
+                        follow, model, normalized_temperature
+                    ):
+                        if result.text:
+                            assistant_chunks.append(result.text)
+                            yield result
+                        if result.meta is not None:
+                            provider_meta = _merge_provider_meta(provider_meta, result.meta)
+                        if (
+                            self._normalize_task_state(state.get("task_state", {})).get("status")
+                            == "paused"
+                        ):
+                            paused_during_stream = True
+                            break
+                    assistant_text = "".join(assistant_chunks)
+                else:
+                    if first_text:
+                        yield StreamResult(text=first_text)
+                    assistant_text = first_text
+        else:
+            async for result in provider.stream_chat(
+                request_messages, model, normalized_temperature
+            ):
+                if result.text:
+                    assistant_chunks.append(result.text)
+                    yield result
+                    if (
+                        self._normalize_task_state(state.get("task_state", {})).get("status")
+                        == "paused"
+                    ):
+                        paused_during_stream = True
+                        break
+                if result.meta is not None:
+                    provider_meta = _merge_provider_meta(provider_meta, result.meta)
 
-        assistant_text = "".join(assistant_chunks)
+            assistant_text = "".join(assistant_chunks)
         if not assistant_text:
             return
 
@@ -1500,5 +1650,6 @@ class SimpleChatAgent:
             "invariants_count": int(context_meta.get("invariants_count", 0)),
             "invariants_applied": bool(context_meta.get("invariants_applied", False)),
             "workflow_guard_applied": bool(context_meta.get("workflow_guard_applied", False)),
+            "mcp_tool": mcp_tool_used,
         }
         yield StreamResult(meta=enriched_meta)

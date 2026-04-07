@@ -793,7 +793,7 @@
       </div>
       <div class="mcp-tab-body" id="mcpLocalBody" role="tabpanel">
         <label class="mcp-field"><span>Путь к скрипту</span>
-          <input type="text" id="mcpScriptPath" placeholder="scripts/minimal_mcp_server.py" autocomplete="off" />
+          <input type="text" id="mcpScriptPath" placeholder="scripts/git_mcp_server.py" autocomplete="off" />
         </label>
         <label class="mcp-field"><span>Имя сервера</span>
           <input type="text" id="mcpServerName" placeholder="MCP Server" autocomplete="off" />
@@ -1183,6 +1183,9 @@ function buildMetaHTML(meta) {
       ? `Branching (${meta.branch_id || 'main'})`
       : 'Sliding Window';
   const modeInfo = `<div class="meta-item">Стратегия: <span class="meta-val">${strategyLabel}</span></div>`;
+  const mcpInfo = meta.mcp_tool
+    ? `<div class="meta-item">MCP: <span class="meta-val">${escapeHtml(meta.mcp_tool)}</span></div>`
+    : '';
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
   const invInfo = `<div class="meta-item">Инварианты: <span class="meta-val">${meta.invariants_count ?? 0}</span>${meta.invariants_applied ? ' <span class="meta-val">(в контексте)</span>' : ''}</div>`;
   const taskAllowed = Array.isArray(meta.task_allowed_next_phases) && meta.task_allowed_next_phases.length
@@ -1215,6 +1218,7 @@ function buildMetaHTML(meta) {
       <div class="meta-item">API токены: <span class="meta-val">${meta.total_tokens}</span> (${meta.prompt_tokens} + ${meta.completion_tokens})</div>
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
       ${modeInfo}
+      ${mcpInfo}
       ${profileInfo}
       ${invInfo}
       ${taskInfo}
@@ -1262,7 +1266,7 @@ const MCP_LS_NAME = 'aichat_mcp_name';
 function loadMcpFormFromStorage() {
   const s = localStorage.getItem(MCP_LS_SCRIPT);
   const n = localStorage.getItem(MCP_LS_NAME);
-  mcpScriptPath.value = s || 'scripts/minimal_mcp_server.py';
+  mcpScriptPath.value = s || 'scripts/git_mcp_server.py';
   mcpServerName.value = n || 'Minimal MCP';
 }
 
