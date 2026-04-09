@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import os
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -12,11 +15,26 @@ from fastapi.staticfiles import StaticFiles
 from .agent import SimpleChatAgent
 from .mcp_panel import router as mcp_router
 from .providers import AIProvider, RouterAIProvider
+from .scheduler_notify import attach_loop
+from .scheduler_routes import router as scheduler_router
+from .scheduler_runner import scheduler_loop
 
 load_dotenv()
 
-app = FastAPI(title="AI Chat Hub")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    attach_loop(asyncio.get_running_loop())
+    sched_task = asyncio.create_task(scheduler_loop())
+    yield
+    sched_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await sched_task
+
+
+app = FastAPI(title="AI Chat Hub", lifespan=lifespan)
 app.include_router(mcp_router)
+app.include_router(scheduler_router)
 
 STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 MEMORY_PATH = Path(__file__).resolve().parent.parent / "data" / "agent_memory.json"

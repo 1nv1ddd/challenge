@@ -1035,6 +1035,24 @@ class SimpleChatAgent:
                     "```",
                 ]
             )
+        if "register_interval_job" in names:
+            lines.extend(
+                [
+                    "",
+                    "Периодические задачи: сначала register_interval_job (сохраняется в SQLite, "
+                    "исполняет сервер приложения), потом по прошествии времени — get_aggregated_results.",
+                    "Пример (heartbeat каждые 120 с, первый запуск через 10 с):",
+                    "```mcp",
+                    '{"name": "register_interval_job", "arguments": {'
+                    '"task_id": "demo_hb", "interval_seconds": 120, "task_type": "heartbeat_rollup", '
+                    '"payload": "tick", "first_run_in_seconds": 10}}',
+                    "```",
+                    "Сводка накопленных срабатываний:",
+                    "```mcp",
+                    '{"name": "get_aggregated_results", "arguments": {"task_id": "demo_hb", "max_samples": 20}}',
+                    "```",
+                ]
+            )
         return Message(role="system", content="\n".join(lines))
 
     def _invariants_system_message(self, invariants: dict) -> Message | None:

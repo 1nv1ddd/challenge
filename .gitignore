@@ -3,3 +3,4 @@ __pycache__/
 *.pyc
 .venv/
 data/agent_memory.json
+data/mcp_scheduler.sqlite

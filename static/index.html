@@ -1007,6 +1007,52 @@ async function init() {
   loadMcpFormFromStorage();
   wireMcpPanel();
   await refreshMcpStatus();
+  startSchedulerEventStream();
+}
+
+let schedulerEventSrc = null;
+
+function startSchedulerEventStream() {
+  if (schedulerEventSrc || typeof EventSource === 'undefined') return;
+  schedulerEventSrc = new EventSource('/api/scheduler/stream');
+  schedulerEventSrc.onmessage = (ev) => {
+    let data;
+    try { data = JSON.parse(ev.data); } catch { return; }
+    if (data.type !== 'scheduler_tick') return;
+    injectSchedulerChatMessage(data);
+  };
+  schedulerEventSrc.onerror = () => {
+    if (schedulerEventSrc) schedulerEventSrc.close();
+    schedulerEventSrc = null;
+    setTimeout(startSchedulerEventStream, 4000);
+  };
+}
+
+function injectSchedulerChatMessage(data) {
+  if (!chats.length) createChat();
+  if (!activeChatId && chats.length) selectChat(chats[0].id);
+  const chat = getChat(activeChatId);
+  if (!chat) return;
+  welcomeEl.style.display = 'none';
+  const tid = escapeHtml(String(data.task_id || ''));
+  const ttyp = data.task_type ? escapeHtml(String(data.task_type)) : '';
+  const prev = escapeHtml(String(data.preview || 'срабатывание'));
+  const body =
+    '**Планировщик (авто-тик)**\n\n'
+    + 'Задача `' + tid + '`' + (ttyp ? ' · `' + ttyp + '`' : '')
+    + '\n\n' + prev;
+  chat.messages.push({
+    role: 'assistant',
+    content: body,
+    meta: { scheduler_tick: true, task_id: data.task_id, task_type: data.task_type },
+  });
+  if (chat.messages.length === 1) {
+    chat.title = 'Планировщик…';
+  }
+  saveChats();
+  renderMessages(chat.messages);
+  renderChatsList();
+  scrollDown();
 }
 
 function syncChatModel() {
@@ -1152,6 +1198,12 @@ function renderMessages(msgs) {
 
 function buildMetaHTML(meta) {
   if (!meta) return '';
+  if (meta.scheduler_tick) {
+    return `
+    <div class="msg-meta">
+      <div class="meta-item">Планировщик MCP · задача <span class="meta-val">${escapeHtml(meta.task_id || '')}</span>${meta.task_type ? ` (${escapeHtml(meta.task_type)})` : ''}</div>
+    </div>`;
+  }
   const timeSec = (meta.time_ms / 1000).toFixed(1);
   const costStr = meta.cost_rub > 0 ? `${meta.cost_rub.toFixed(6)} ₽` : '0 ₽';
   const totalCostStr = meta.conversation_total_cost_rub > 0
