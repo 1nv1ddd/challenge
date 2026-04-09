@@ -1,6 +1,9 @@
+.DS_Store
 .env
 __pycache__/
 *.pyc
 .venv/
 data/agent_memory.json
 data/mcp_scheduler.sqlite
+data/tech_radar_outputs/*
+!data/tech_radar_outputs/.gitkeep

@@ -793,7 +793,7 @@
       </div>
       <div class="mcp-tab-body" id="mcpLocalBody" role="tabpanel">
         <label class="mcp-field"><span>Путь к скрипту</span>
-          <input type="text" id="mcpScriptPath" placeholder="scripts/git_mcp_server.py" autocomplete="off" />
+          <input type="text" id="mcpScriptPath" placeholder="scripts/tech_radar_mcp_server.py" autocomplete="off" />
         </label>
         <label class="mcp-field"><span>Имя сервера</span>
           <input type="text" id="mcpServerName" placeholder="MCP Server" autocomplete="off" />
@@ -1318,8 +1318,8 @@ const MCP_LS_NAME = 'aichat_mcp_name';
 function loadMcpFormFromStorage() {
   const s = localStorage.getItem(MCP_LS_SCRIPT);
   const n = localStorage.getItem(MCP_LS_NAME);
-  mcpScriptPath.value = s || 'scripts/git_mcp_server.py';
-  mcpServerName.value = n || 'Minimal MCP';
+  mcpScriptPath.value = s || 'scripts/tech_radar_mcp_server.py';
+  mcpServerName.value = n || 'Tech radar MCP';
 }
 
 function saveMcpFormToStorage() {

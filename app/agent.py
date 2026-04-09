@@ -1025,6 +1025,19 @@ class SimpleChatAgent:
                 names.add(str(nm))
             desc = (t.get("description") or "").strip() or "—"
             lines.append(f"- {nm}: {desc}")
+        if "run_pipeline" in names:
+            lines.extend(
+                [
+                    "",
+                    "Tech radar / пайплайн из нескольких инструментов: за один ход один блок ```mcp``` — "
+                    "для полной цепочки (поиск релиза → конспект → файл) вызывай **run_pipeline** "
+                    "с аргументом repository вида \"owner/repo\" (например fastapi/fastapi).",
+                    "Пример:",
+                    "```mcp",
+                    '{"name": "run_pipeline", "arguments": {"repository": "encode/httpx"}}',
+                    "```",
+                ]
+            )
         if "get_recent_commits" in names:
             lines.extend(
                 [
@@ -1560,8 +1573,13 @@ class SimpleChatAgent:
                     provider_meta = _merge_provider_meta(provider_meta, result.meta)
 
             assistant_text = "".join(assistant_chunks)
-        if not assistant_text:
-            return
+
+        if not (assistant_text or "").strip():
+            assistant_text = (
+                "Пустой ответ модели. Проверьте ROUTERAI_API_KEY, перезапустите сервер после смены .env. "
+                "Если провайдер вернул ошибку, она должна была отобразиться выше."
+            )
+            yield StreamResult(text=assistant_text)
 
         assistant_msg = Message(role="assistant", content=assistant_text)
         self._append_turn(state, strategy, context_meta["branch_id"], user_msg, assistant_msg)

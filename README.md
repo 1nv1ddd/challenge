@@ -49,6 +49,8 @@ python -m unittest tests.test_mcp_connection -v
 
 Другой MCP-процесс (пример): `MCP_CMD=npx` и `MCP_ARGS='["-y","@modelcontextprotocol/server-everything"]'` перед запуском клиента (нужен Node.js).
 
+**Tech radar (День 19):** `scripts/tech_radar_mcp_server.py` — инструменты `search` (GitHub последний релиз), `summarize`, `saveToFile`, пайплайн `run_pipeline`. Файлы: `data/tech_radar_outputs/release_watch_<owner>_<repo>.md`. Тесты: `python -m unittest tests.test_tech_radar_mcp -v` (нужен интернет).
+
 ## Деплой на VPS (Docker)
 
 ```bash
