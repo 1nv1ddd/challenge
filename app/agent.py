@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import html
 import json
 import math
 import re
@@ -111,7 +112,11 @@ def _parse_mcp_tool_call(text: str) -> dict | None:
         args = {}
     if not isinstance(args, dict):
         return None
-    return {"name": str(data["name"]), "arguments": args}
+    out: dict = {"name": str(data["name"]), "arguments": args}
+    srv = data.get("server")
+    if srv is not None and str(srv).strip():
+        out["server"] = str(srv).strip().lower()
+    return out
 
 
 def _merge_provider_meta(prev: dict | None, new: dict | None) -> dict | None:
@@ -1001,50 +1006,74 @@ class SimpleChatAgent:
     def _mcp_system_message_from_bridge(bridge: dict) -> Message | None:
         if not bridge or not bridge.get("tools"):
             return None
+        multi = bool(bridge.get("multi_server"))
         srv = bridge.get("server_name") or "MCP"
         lines = [
-            f"Подключён MCP-сервер «{srv}». Ниже список инструментов (имя и описание).",
+            (
+                f"Подключено MCP-серверов: {bridge.get('server_count', 1)}. У каждого инструмента есть server_id."
+                if multi
+                else f"Подключён MCP-сервер «{srv}». Ниже список инструментов (имя и описание)."
+            ),
             "",
-            "Если для ответа пользователю нужны внешние данные, сначала ответь ТОЛЬКО одним markdown-блоком "
-            '(без текста до или после, без пояснений):',
+            "Если нужны инструменты, ответь сначала только одним markdown-блоком (без текста до/после):",
             "```mcp",
-            '{"name": "<имя_инструмента>", "arguments": { ... }}',
+            (
+                '{"server": "<id>", "name": "<инструмент>", "arguments": { ... }}'
+                if multi
+                else '{"name": "<имя_инструмента>", "arguments": { ... }}'
+            ),
             "```",
             "",
-            "Ключ arguments — объект JSON по схеме параметров инструмента (типы: число, строка, объект).",
-            "Если инструмент не нужен — отвечай обычным текстом, без блока ```mcp.",
+            (
+                "Поле server обязательно, если один и тот же инструмент встречается на нескольких серверах."
+                if multi
+                else "При одном подключённом сервере поле server можно не указывать."
+            ),
             "",
-            "Инструменты:",
+            "Длинный сценарий: после результата инструмента снова один блок mcp с очередным шагом; "
+            "когда данных достаточно — финальный ответ обычным текстом без нового блока mcp.",
+            "",
+            "Ключ arguments — JSON по схеме параметров.",
+            "Инструменты (server → name):",
         ]
         names: set[str] = set()
         for t in bridge["tools"]:
             if not isinstance(t, dict):
                 continue
             nm = t.get("name") or ""
+            sid = t.get("mcp_server_id") or "?"
             if nm:
                 names.add(str(nm))
             desc = (t.get("description") or "").strip() or "—"
-            lines.append(f"- {nm}: {desc}")
+            lines.append(f"- **{sid}** → `{nm}`: {desc}")
         if "run_pipeline" in names:
+            rp_ex = (
+                '{"server": "radar", "name": "run_pipeline", "arguments": {"repository": "encode/httpx"}}'
+                if multi
+                else '{"name": "run_pipeline", "arguments": {"repository": "encode/httpx"}}'
+            )
             lines.extend(
                 [
                     "",
-                    "Tech radar / пайплайн из нескольких инструментов: за один ход один блок ```mcp``` — "
-                    "для полной цепочки (поиск релиза → конспект → файл) вызывай **run_pipeline** "
-                    "с аргументом repository вида \"owner/repo\" (например fastapi/fastapi).",
+                    "Tech radar: **run_pipeline** с repository \"owner/repo\".",
                     "Пример:",
                     "```mcp",
-                    '{"name": "run_pipeline", "arguments": {"repository": "encode/httpx"}}',
+                    rp_ex,
                     "```",
                 ]
             )
         if "get_recent_commits" in names:
+            gc_ex = (
+                '{"server": "git", "name": "get_recent_commits", "arguments": {"count": 5}}'
+                if multi
+                else '{"name": "get_recent_commits", "arguments": {"count": 5}}'
+            )
             lines.extend(
                 [
                     "",
                     "Пример для git (последние коммиты):",
                     "```mcp",
-                    '{"name": "get_recent_commits", "arguments": {"count": 5}}',
+                    gc_ex,
                     "```",
                 ]
             )
@@ -1496,66 +1525,91 @@ class SimpleChatAgent:
         mcp_tool_used: str | None = None
 
         if bridge is not None:
-            first_chunks: list[str] = []
-            async for result in provider.stream_chat(
-                request_messages, model, normalized_temperature
-            ):
-                if result.text:
-                    first_chunks.append(result.text)
-                if result.meta is not None:
-                    provider_meta = _merge_provider_meta(provider_meta, result.meta)
-                if self._normalize_task_state(state.get("task_state", {})).get("status") == "paused":
-                    paused_during_stream = True
-                    break
-            first_text = "".join(first_chunks)
-            if paused_during_stream:
-                if first_text:
-                    yield StreamResult(text=first_text)
-                assistant_text = first_text
-            else:
-                call = _parse_mcp_tool_call(first_text)
-                if (
-                    call
-                    and mcp_panel.tool_name_allowed(call["name"])
+            _MCP_MAX_STEPS = 8
+            working_msgs: list[Message] = list(request_messages)
+            mcp_chain_labels: list[str] = []
+            mcp_streamed_blocks: list[str] = []
+            assistant_text = ""
+            for _mcp_step in range(_MCP_MAX_STEPS):
+                step_chunks: list[str] = []
+                async for result in provider.stream_chat(
+                    working_msgs, model, normalized_temperature
                 ):
-                    mcp_tool_used = call["name"]
+                    if result.text:
+                        step_chunks.append(result.text)
+                    if result.meta is not None:
+                        provider_meta = _merge_provider_meta(provider_meta, result.meta)
+                    if (
+                        self._normalize_task_state(state.get("task_state", {})).get("status")
+                        == "paused"
+                    ):
+                        paused_during_stream = True
+                        break
+                step_text = "".join(step_chunks)
+                if paused_during_stream:
+                    if step_text:
+                        yield StreamResult(text=step_text)
+                    _parts = [*mcp_streamed_blocks]
+                    if step_text.strip():
+                        _parts.append(step_text.strip())
+                    assistant_text = "\n\n".join(_parts) if _parts else step_text
+                    break
+                call = _parse_mcp_tool_call(step_text)
+                srv = call.get("server") if call else None
+                if call and mcp_panel.mcp_call_allowed(srv, call["name"]):
+                    try:
+                        _, _, resolved_sid = mcp_panel.resolve_invocation(srv, call["name"])
+                    except ValueError:
+                        resolved_sid = (srv or "default").strip() or "default"
+                    label = f"{resolved_sid}:{call['name']}"
+                    mcp_chain_labels.append(label)
+                    mcp_tool_used = " → ".join(mcp_chain_labels)
                     try:
                         tool_payload = await mcp_panel.invoke_mcp_tool(
-                            call["name"], call.get("arguments") or {}
+                            call["name"],
+                            call.get("arguments") or {},
+                            server_id=srv,
                         )
                     except Exception as exc:  # noqa: BLE001
                         tool_payload = f"Ошибка выполнения: {exc}"
-                    assistant_plan = first_text.strip()
-                    follow_user = (
-                        f"Результат инструмента `{call['name']}`:\n{tool_payload}\n\n"
-                        "Используй эти данные и сформируй полный ответ пользователю на русском "
-                        "(понятно, без второго fence mcp / без повторного инструментального блока)."
+                    # HTML, не markdown-огороды: иначе marked «съедает» блок при кривых ``` в ответе модели.
+                    esc_l = html.escape(label, quote=True)
+                    esc_p = html.escape(tool_payload.rstrip(), quote=True)
+                    out_vis = (
+                        f'<div class="mcp-inline-result"><p><strong>MCP</strong> '
+                        f"<code>{esc_l}</code> — вывод инструмента:</p>"
+                        f"<pre>{esc_p}</pre></div>\n\n"
                     )
-                    follow = [
-                        *request_messages,
-                        Message(role="assistant", content=assistant_plan),
+                    yield StreamResult(text=out_vis)
+                    mcp_streamed_blocks.append(out_vis.strip())
+                    follow_user = (
+                        f"Шаг {_mcp_step + 1}. Инструмент `{call['name']}` "
+                        f"(сервер `{srv or 'единственный'}`).\n\n{tool_payload}\n\n"
+                        "Если нужен ещё один инструмент (в том числе на **другом** MCP-сервере) — "
+                        "ответь одним блоком ```mcp с полями server (если несколько серверов), name, arguments. "
+                        "Иначе дай **полный** ответ пользователю на русском **без** нового блока ```mcp — "
+                        "обязательно **кратко упомяни результаты всех уже выполненных шагов** (включая этот), "
+                        "чтобы пользователь видел вывод каждого инструмента."
+                    )
+                    working_msgs = [
+                        *working_msgs,
+                        Message(role="assistant", content=step_text.strip()),
                         Message(role="user", content=follow_user),
                     ]
-                    assistant_chunks = []
-                    async for result in provider.stream_chat(
-                        follow, model, normalized_temperature
-                    ):
-                        if result.text:
-                            assistant_chunks.append(result.text)
-                            yield result
-                        if result.meta is not None:
-                            provider_meta = _merge_provider_meta(provider_meta, result.meta)
-                        if (
-                            self._normalize_task_state(state.get("task_state", {})).get("status")
-                            == "paused"
-                        ):
-                            paused_during_stream = True
-                            break
-                    assistant_text = "".join(assistant_chunks)
-                else:
-                    if first_text:
-                        yield StreamResult(text=first_text)
-                    assistant_text = first_text
+                    continue
+                if step_text.strip():
+                    yield StreamResult(text=step_text)
+                parts = [*mcp_streamed_blocks]
+                if step_text.strip():
+                    parts.append(step_text.strip())
+                assistant_text = "\n\n".join(parts) if parts else ""
+                break
+            if not (assistant_text or "").strip() and mcp_streamed_blocks:
+                note = (
+                    "\n\n*Достигнут лимит цепочки MCP за один ответ; при необходимости продолжите новым сообщением.*"
+                )
+                assistant_text = "\n\n".join(mcp_streamed_blocks) + note
+                yield StreamResult(text=note)
         else:
             async for result in provider.stream_chat(
                 request_messages, model, normalized_temperature

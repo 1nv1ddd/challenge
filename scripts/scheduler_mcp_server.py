@@ -18,8 +18,6 @@ MCP: отложенные и периодические задачи (напом
 Запуск: python scripts/scheduler_mcp_server.py
 """
 
-from __future__ import annotations
-
 import json
 import sys
 from pathlib import Path

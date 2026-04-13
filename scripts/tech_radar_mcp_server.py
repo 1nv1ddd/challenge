@@ -7,8 +7,6 @@ MCP «Tech radar»: GitHub релиз → конспект → файл.
 Запуск: python scripts/tech_radar_mcp_server.py
 """
 
-from __future__ import annotations
-
 import json
 import re
 from pathlib import Path

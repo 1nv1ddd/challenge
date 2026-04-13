@@ -86,11 +86,13 @@ async def chat(request: Request):
                     yield f"data: [META]{json.dumps(result.meta)}\n\n"
             yield "data: [DONE]\n\n"
         except LookupError as exc:
-            yield f"data: [ERROR] {str(exc)}\n\n"
+            msg = (str(exc).strip() or type(exc).__name__)
+            yield f"data: [ERROR] {msg}\n\n"
         except ValueError as exc:
-            yield f"data: [ERROR] {str(exc)}\n\n"
+            msg = (str(exc).strip() or type(exc).__name__)
+            yield f"data: [ERROR] {msg}\n\n"
         except Exception as exc:
-            msg = str(exc).replace("\n", " ")
+            msg = str(exc).replace("\n", " ").strip() or type(exc).__name__
             yield f"data: [ERROR] {msg}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

@@ -10,8 +10,6 @@ MCP вокруг локального Git: лог коммитов, ветка, 
 Запуск: python scripts/git_mcp_server.py
 """
 
-from __future__ import annotations
-
 import json
 import os
 import subprocess

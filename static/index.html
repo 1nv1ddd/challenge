@@ -482,6 +482,25 @@
     }
     .msg-content ul, .msg-content ol { padding-left: 20px; margin: 8px 0; }
     .msg-content li { margin: 4px 0; }
+    .mcp-inline-result {
+      margin: 12px 0;
+      padding: 10px 12px;
+      border-left: 3px solid var(--accent);
+      background: rgba(139, 92, 246, 0.1);
+      border-radius: 6px;
+    }
+    .mcp-inline-result p { margin: 0 0 6px; }
+    .mcp-inline-result pre {
+      margin: 0;
+      background: #161616;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px 12px;
+      white-space: pre-wrap;
+      word-break: break-word;
+      font-size: 13px;
+    }
+
     .msg-content blockquote {
       border-left: 3px solid var(--accent);
       padding-left: 12px;
@@ -792,6 +811,9 @@
         <button type="button" class="mcp-tab" data-tab="remote" role="tab" aria-selected="false">Удалённый (HTTP)</button>
       </div>
       <div class="mcp-tab-body" id="mcpLocalBody" role="tabpanel">
+        <label class="mcp-field"><span>ID сервера (латиница)</span>
+          <input type="text" id="mcpServerId" placeholder="radar" autocomplete="off" title="Уникальный ключ: git, radar, sched…" />
+        </label>
         <label class="mcp-field"><span>Путь к скрипту</span>
           <input type="text" id="mcpScriptPath" placeholder="scripts/tech_radar_mcp_server.py" autocomplete="off" />
         </label>
@@ -800,7 +822,7 @@
         </label>
         <div class="mcp-actions">
           <button type="button" id="mcpConnectBtn">Подключить</button>
-          <button type="button" id="mcpDisconnectBtn">Отключить</button>
+          <button type="button" id="mcpDisconnectBtn">Отключить все</button>
         </div>
       </div>
       <div class="mcp-tab-body hidden" id="mcpRemoteBody" role="tabpanel">
@@ -950,6 +972,7 @@ const pauseToggleBtn = $('#pauseToggleBtn');
 const chatsList   = $('#chatsList');
 const sidebar     = $('#sidebar');
 const overlay     = $('#overlay');
+const mcpServerId = $('#mcpServerId');
 const mcpScriptPath = $('#mcpScriptPath');
 const mcpServerName = $('#mcpServerName');
 const mcpConnectBtn = $('#mcpConnectBtn');
@@ -1289,7 +1312,16 @@ function msgHTML(role, content, meta = null) {
   const avatarClass = role === 'user' ? 'user' : 'assistant';
   const icon = role === 'user' ? '👤' : '🤖';
   const label = role === 'user' ? 'Вы' : 'Ассистент';
-  const rendered = role === 'assistant' ? marked.parse(content) : escapeHtml(content).replace(/\n/g, '<br>');
+  let rendered;
+  if (role === 'assistant') {
+    try {
+      rendered = marked.parse(content);
+    } catch {
+      rendered = escapeHtml(content).replace(/\n/g, '<br>');
+    }
+  } else {
+    rendered = escapeHtml(content).replace(/\n/g, '<br>');
+  }
   const metaHtml = role === 'assistant' ? buildMetaHTML(meta) : '';
   return `<div class="msg"><div class="msg-avatar ${avatarClass}">${icon}</div><div class="msg-body"><div class="msg-role">${label}</div><div class="msg-content">${rendered}</div>${metaHtml}</div></div>`;
 }
@@ -1314,15 +1346,19 @@ function escapeHtml(s) {
 
 const MCP_LS_SCRIPT = 'aichat_mcp_script';
 const MCP_LS_NAME = 'aichat_mcp_name';
+const MCP_LS_SERVER_ID = 'aichat_mcp_server_id';
 
 function loadMcpFormFromStorage() {
   const s = localStorage.getItem(MCP_LS_SCRIPT);
   const n = localStorage.getItem(MCP_LS_NAME);
+  const sid = localStorage.getItem(MCP_LS_SERVER_ID);
+  mcpServerId.value = sid || 'radar';
   mcpScriptPath.value = s || 'scripts/tech_radar_mcp_server.py';
   mcpServerName.value = n || 'Tech radar MCP';
 }
 
 function saveMcpFormToStorage() {
+  localStorage.setItem(MCP_LS_SERVER_ID, mcpServerId.value.trim().toLowerCase() || 'default');
   localStorage.setItem(MCP_LS_SCRIPT, mcpScriptPath.value.trim());
   localStorage.setItem(MCP_LS_NAME, mcpServerName.value.trim());
 }
@@ -1386,7 +1422,8 @@ function renderSchemaTree(schema) {
 }
 
 function renderMcpToolAccordion(t) {
-  const name = escapeHtml(t.name || '');
+  const sid = t.mcp_server_id ? '[' + escapeHtml(String(t.mcp_server_id)) + '] ' : '';
+  const name = sid + escapeHtml(t.name || '');
   const rawDesc = t.description != null ? String(t.description).trim() : '';
   const desc = rawDesc ? escapeHtml(rawDesc) : '—';
   const schema = t.input_schema != null ? t.input_schema : {};
@@ -1409,9 +1446,16 @@ function renderMcpFromState(s) {
   const n = tools.length;
   mcpToolsCount.textContent = String(n);
   mcpToolsSummary.textContent = `Все активные инструменты (${n})`;
-  if (s.connected) {
+  if (s.connected && (s.servers || []).length) {
     mcpStatusBox.className = 'mcp-status ok';
-    mcpStatusBox.innerHTML = '✓ Статус: подключено к <strong>' + escapeHtml(s.server_name || 'MCP') + '</strong>';
+    const parts = (s.servers || []).map(function (x) {
+      return escapeHtml(x.server_name || x.id) + ' <code>' + escapeHtml(x.id) + '</code>';
+    }).join(', ');
+    const multi = (s.server_count || 0) > 1;
+    mcpStatusBox.innerHTML =
+      '✓ MCP: ' +
+      (multi ? '<strong>' + s.server_count + ' сервера</strong> — ' : '') +
+      parts;
     mcpToolsList.innerHTML = tools.map(renderMcpToolAccordion).join('');
   } else if (s.error) {
     mcpStatusBox.className = 'mcp-status err';
@@ -1462,6 +1506,7 @@ function wireMcpPanel() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           transport: 'stdio',
+          server_id: (mcpServerId.value.trim().toLowerCase() || 'default'),
           script_path: mcpScriptPath.value.trim(),
           server_name: mcpServerName.value.trim() || 'MCP Server',
         }),
@@ -1487,7 +1532,11 @@ function wireMcpPanel() {
 
   mcpDisconnectBtn.addEventListener('click', async () => {
     try {
-      await fetch('/api/mcp/disconnect', { method: 'POST' });
+      await fetch('/api/mcp/disconnect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
     } catch {}
     await refreshMcpStatus();
   });
@@ -1919,17 +1968,27 @@ async function send() {
           continue;
         }
         if (data.startsWith('[ERROR]')) {
-          full += `\n\n**Ошибка:** ${data.slice(8)}`;
+          // Префикс «[ERROR]» = 7 символов; slice(8) отрезал первую букву текста или давал пусто.
+          const errTail = data.slice(7).trim();
+          full += `\n\n**Ошибка:** ${errTail || '(текст ошибки не пришёл — см. лог uvicorn)'}`;
           break;
         }
         try { full += JSON.parse(data); } catch { full += data; }
       }
-      contentEl.innerHTML = marked.parse(full);
+      try {
+        contentEl.innerHTML = marked.parse(full);
+      } catch {
+        contentEl.textContent = full;
+      }
       scrollDown();
     }
   } catch (err) {
     full += `\n\n**Ошибка соединения:** ${err.message}`;
-    contentEl.innerHTML = marked.parse(full);
+    try {
+      contentEl.innerHTML = marked.parse(full);
+    } catch {
+      contentEl.textContent = full;
+    }
   }
 
   contentEl.classList.remove('typing-indicator');
