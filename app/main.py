@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -21,11 +22,30 @@ from .scheduler_runner import scheduler_loop
 
 load_dotenv()
 
+_rag_log = logging.getLogger("uvicorn.error")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     attach_loop(asyncio.get_running_loop())
     sched_task = asyncio.create_task(scheduler_loop())
+
+    auto_rag = os.getenv("RAG_AUTO_BUILD", "1").strip().lower() in ("1", "true", "yes")
+    if auto_rag and (os.getenv("ROUTERAI_API_KEY") or "").strip():
+        from .rag.build_index import build_rag_index, index_needs_build
+        from .rag.pipeline import default_index_path
+
+        idx = default_index_path()
+        if index_needs_build(idx):
+            _rag_log.warning("RAG: индекс отсутствует или пуст — автосборка (может занять 1–3 мин)…")
+            try:
+                await asyncio.to_thread(
+                    lambda: build_rag_index(include_extra=True, write_report=True),
+                )
+                _rag_log.warning("RAG: индекс готов — %s", idx)
+            except Exception as exc:  # noqa: BLE001
+                _rag_log.exception("RAG: автосборка не удалась: %s", exc)
+
     yield
     sched_task.cancel()
     with contextlib.suppress(asyncio.CancelledError):
@@ -65,6 +85,7 @@ async def chat(request: Request):
     branch_id: str = body.get("branch_id", "main")
     profile_id: str | None = body.get("profile_id")
     resume: bool = bool(body.get("resume", False))
+    rag = body.get("rag")
 
     async def event_stream():
         try:
@@ -78,6 +99,7 @@ async def chat(request: Request):
                 branch_id=branch_id,
                 profile_id=profile_id,
                 resume=resume,
+                rag=rag if isinstance(rag, dict) else None,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
@@ -96,6 +118,23 @@ async def chat(request: Request):
             yield f"data: [ERROR] {msg}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.get("/api/rag/status")
+async def rag_status():
+    from app.rag.build_index import index_needs_build
+    from app.rag.pipeline import default_index_path
+    from app.rag.store import stats
+
+    p = default_index_path()
+    if index_needs_build(p):
+        return {
+            "ok": True,
+            "indexed": False,
+            "path": str(p),
+            "hint": "Индекс пуст или отсутствует. При RAG_AUTO_BUILD=1 и ROUTERAI_API_KEY он соберётся при старте; иначе: python scripts/build_rag_index.py",
+        }
+    return {"ok": True, "indexed": True, "path": str(p), "stats": stats(p)}
 
 
 @app.get("/api/branches")

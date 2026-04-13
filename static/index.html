@@ -845,6 +845,13 @@
       <select id="modelSelect"></select>
       <label>Профиль:</label>
       <select id="profileSelect"></select>
+      <label title="Локальный индекс (День 21). Сборка: python scripts/build_rag_index.py">RAG:</label>
+      <select id="ragModeSelect" title="Нужен собранный индекс и ROUTERAI_API_KEY">
+        <option value="off">выкл</option>
+        <option value="fixed">fixed</option>
+        <option value="structural">structural</option>
+        <option value="compare">fixed vs structural</option>
+      </select>
     </div>
 
     <div class="messages" id="messages">
@@ -965,6 +972,7 @@ marked.setOptions({
 const $ = s => document.querySelector(s);
 const modelSel    = $('#modelSelect');
 const profileSel  = $('#profileSelect');
+const ragModeSel  = $('#ragModeSelect');
 const messagesEl  = $('#messages');
 const welcomeEl   = $('#welcome');
 const userInput   = $('#userInput');
@@ -1015,6 +1023,9 @@ async function init() {
 
   modelSel.addEventListener('change', syncChatModel);
   profileSel.addEventListener('change', syncChatProfile);
+  const RAG_LS = 'aichat_rag_mode';
+  ragModeSel.value = localStorage.getItem(RAG_LS) || 'off';
+  ragModeSel.addEventListener('change', () => localStorage.setItem(RAG_LS, ragModeSel.value));
   profileSel.value = defaultProfileId;
   fillProfileEditor(defaultProfileId);
   applyTaskStateToControls({
@@ -1261,6 +1272,18 @@ function buildMetaHTML(meta) {
   const mcpInfo = meta.mcp_tool
     ? `<div class="meta-item">MCP: <span class="meta-val">${escapeHtml(meta.mcp_tool)}</span></div>`
     : '';
+  let ragInfo = '';
+  if (meta.rag && typeof meta.rag === 'object') {
+    const r = meta.rag;
+    if (r.rag_error) {
+      ragInfo = `<div class="meta-item">RAG: <span class="meta-val">${escapeHtml(String(r.rag_error))}</span></div>`;
+    } else {
+      const nf = (r.rag_hits_fixed || []).length;
+      const ns = (r.rag_hits_structural || []).length;
+      const nm = r.rag_mode ? escapeHtml(String(r.rag_mode)) : '';
+      ragInfo = `<div class="meta-item">RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}</div>`;
+    }
+  }
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
   const invInfo = `<div class="meta-item">Инварианты: <span class="meta-val">${meta.invariants_count ?? 0}</span>${meta.invariants_applied ? ' <span class="meta-val">(в контексте)</span>' : ''}</div>`;
   const taskAllowed = Array.isArray(meta.task_allowed_next_phases) && meta.task_allowed_next_phases.length
@@ -1294,6 +1317,7 @@ function buildMetaHTML(meta) {
       <div class="meta-item">Лимит контекста: <span class="meta-val">${meta.model_context_limit_tokens ?? '-'}</span> (${limitPct})</div>
       ${modeInfo}
       ${mcpInfo}
+      ${ragInfo}
       ${profileInfo}
       ${invInfo}
       ${taskInfo}
@@ -1945,6 +1969,15 @@ async function send() {
         context_strategy: chat.contextStrategy || 'sliding',
         branch_id: chat.branchId || 'main',
         resume: isResume,
+        rag: (() => {
+          const m = ragModeSel && ragModeSel.value;
+          if (!m || m === 'off') return null;
+          return {
+            enabled: true,
+            strategy: m === 'compare' ? 'compare' : m,
+            top_k: 8,
+          };
+        })(),
       }),
     });
     const reader = resp.body.getReader();

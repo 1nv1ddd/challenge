@@ -1097,6 +1097,112 @@ class SimpleChatAgent:
             )
         return Message(role="system", content="\n".join(lines))
 
+    @staticmethod
+    def _format_rag_hits_block(label: str, hits: list[dict]) -> str:
+        lines = [f"### Набор отрывков: **{label}**", ""]
+        for i, h in enumerate(hits, 1):
+            sec = h.get("section") or "—"
+            lines.append(
+                f"**[{i}]** score={float(h['score']):.4f} | файл `{h['source']}` | section: {sec}"
+            )
+            lines.append("")
+            lines.append(str(h.get("text", ""))[:3200].strip())
+            lines.append("")
+        return "\n".join(lines)
+
+    async def _rag_context_message(
+        self,
+        user_content: str,
+        rag_cfg: dict | None,
+    ) -> tuple[Message | None, dict]:
+        if not rag_cfg or not rag_cfg.get("enabled"):
+            return None, {}
+        from .rag import pipeline as rag_pipeline
+        from .rag.embeddings import embed_texts_async
+        from .rag.retrieve import search_cosine
+        from .rag.store import load_matrix_for_strategy
+
+        raw_path = rag_cfg.get("index_path")
+        idx = Path(raw_path) if raw_path else rag_pipeline.default_index_path()
+        if not idx.is_file():
+            return (
+                Message(
+                    role="system",
+                    content=(
+                        "[RAG] Локальный индекс не найден. Соберите: "
+                        "`python scripts/build_rag_index.py` (нужен ROUTERAI_API_KEY)."
+                    ),
+                ),
+                {"rag_error": "index_missing"},
+            )
+        mode = str(rag_cfg.get("strategy") or "fixed").lower().strip()
+        top_k = int(rag_cfg.get("top_k") or 5)
+        meta_out: dict = {"rag_mode": mode, "rag_top_k": top_k}
+        try:
+            q_vec = (await embed_texts_async([user_content]))[0]
+        except Exception as e:  # noqa: BLE001
+            return (
+                Message(role="system", content=f"[RAG] Ошибка эмбеддинга запроса: {e}"),
+                {"rag_error": str(e)},
+            )
+
+        def _shrink(hits: list[dict]) -> list[dict]:
+            return [
+                {
+                    "chunk_id": h["chunk_id"],
+                    "source": h["source"],
+                    "section": h.get("section"),
+                    "score": round(float(h["score"]), 4),
+                }
+                for h in hits
+            ]
+
+        _rag_grounding = (
+            "ПРАВИЛА (обязательны):\n"
+            "- **RAG** в этом приложении = **Retrieval-Augmented Generation** (поиск по локальному индексу текстов), "
+            "не «Red-Amber-Green» и не другие расшифровки.\n"
+            "- **MCP** в этом репозитории = **Model Context Protocol** (см. отрывки из кода/README).\n"
+            "- Отвечай **только** по фактам из блоков «Набор отрывков» ниже. Не дополняй «типичными советами» и общими шаблонами.\n"
+            "- Если точного ответа в отрывках нет — напиши явно: «В переданных фрагментах нет ответа на …» и не выдумывай цифры, контакты и SLA.\n"
+            "- Укажи **номер отрывка [n]** и **файл** `source`, откуда взял факт.\n\n"
+        )
+
+        if mode == "compare":
+            mf, matf = load_matrix_for_strategy(idx, "fixed")
+            ms, mats = load_matrix_for_strategy(idx, "structural")
+            hf = search_cosine(q_vec, mf, matf, top_k=top_k)
+            hs = search_cosine(q_vec, ms, mats, top_k=top_k)
+            meta_out["rag_hits_fixed"] = _shrink(hf)
+            meta_out["rag_hits_structural"] = _shrink(hs)
+            intro = (
+                _rag_grounding
+                + "Ниже — фрагменты из **локального корпуса** (учебный справочник + README + `app/agent.py`), "
+                "подобранные **семантическим поиском** по двум стратегиям chunking:\n"
+                "- **fixed** — окна фиксированной длины;\n"
+                "- **structural** — по заголовкам Markdown.\n\n"
+                "Сначала ответь на вопрос пользователя **строго по отрывкам**. "
+                "Затем добавь блок **«Сравнение chunking»** (2–5 предложений): какой набор отрывков полезнее для этого вопроса.\n\n"
+            )
+            body = "\n".join(
+                [
+                    intro,
+                    self._format_rag_hits_block("fixed", hf),
+                    self._format_rag_hits_block("structural", hs),
+                ]
+            )
+            return Message(role="system", content=body), meta_out
+
+        strat = "fixed" if mode == "fixed" else "structural"
+        m, matrix = load_matrix_for_strategy(idx, strat)
+        h = search_cosine(q_vec, m, matrix, top_k=top_k)
+        meta_out[f"rag_hits_{strat}"] = _shrink(h)
+        intro = (
+            _rag_grounding
+            + f"Ниже — топ-{top_k} отрывков из локального индекса (chunking: **{strat}**).\n\n"
+        )
+        body = intro + self._format_rag_hits_block(strat, h)
+        return Message(role="system", content=body), meta_out
+
     def _invariants_system_message(self, invariants: dict) -> Message | None:
         inv = self._normalize_invariants(invariants)
         if not inv:
@@ -1416,6 +1522,7 @@ class SimpleChatAgent:
         branch_id: str = "main",
         profile_id: str | None = None,
         resume: bool = False,
+        rag: dict | None = None,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
@@ -1518,6 +1625,10 @@ class SimpleChatAgent:
         mcp_instr = self._mcp_system_message_from_bridge(bridge) if bridge else None
         if mcp_instr is not None:
             request_messages = [*request_messages[:-1], mcp_instr, request_messages[-1]]
+
+        rag_msg, rag_meta = await self._rag_context_message(user_msg.content, rag)
+        if rag_msg is not None:
+            request_messages = [*request_messages[:-1], rag_msg, request_messages[-1]]
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
@@ -1741,5 +1852,6 @@ class SimpleChatAgent:
             "invariants_applied": bool(context_meta.get("invariants_applied", False)),
             "workflow_guard_applied": bool(context_meta.get("workflow_guard_applied", False)),
             "mcp_tool": mcp_tool_used,
+            "rag": rag_meta if rag_meta else None,
         }
         yield StreamResult(meta=enriched_meta)

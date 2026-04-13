@@ -5,3 +5,4 @@ python-dotenv==1.0.1
 pydantic==2.10.4
 # MCP (Model Context Protocol) — клиент/сервер в scripts/
 mcp>=1.4.0,<2
+numpy>=2.0.0,<3

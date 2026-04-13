@@ -51,6 +51,21 @@ python -m unittest tests.test_mcp_connection -v
 
 **Tech radar (День 19):** `scripts/tech_radar_mcp_server.py` — инструменты `search` (GitHub последний релиз), `summarize`, `saveToFile`, пайплайн `run_pipeline`. Файлы: `data/tech_radar_outputs/release_watch_<owner>_<repo>.md`. Тесты: `python -m unittest tests.test_tech_radar_mcp -v` (нужен интернет).
 
+## RAG — индексация документов (День 21)
+
+**Откуда берётся объём «20–30+ страниц»:** при `python scripts/build_rag_index.py` в индекс попадает всё из `data/rag_corpus/*.md` **плюс по умолчанию** `README.md` (документация) и `app/agent.py` (код как текст). Основная масса — файл **`data/rag_corpus/00_polarline_handbook.md`** (~110+ КБ текста, по грубой оценке десятки страниц при ~2–3 тыс. знаков на страницу); вместе с README и `agent.py` суммарно получается **существенно больше** порога 20–30 страниц. PDF в репозитории не зашит: при необходимости добавьте `.pdf`, извлечь текст (например `pypdf`) и положите `.md`/`.txt` в `data/rag_corpus/` или расширьте скрипт сборки.
+
+Две стратегии chunking — **fixed** (окно по символам) и **structural** (заголовки Markdown). Эмбеддинги: OpenAI-совместимый `POST /v1/embeddings` на RouterAI (`ROUTERAI_API_KEY`, модель `RAG_EMBEDDING_MODEL`, по умолчанию `openai/text-embedding-3-small`). Индекс: SQLite `data/rag_index/chunks.sqlite` (в `.gitignore`), отчёт сравнения: `data/rag_index/chunking_report.md`.
+
+```bash
+pip install -r requirements.txt
+python scripts/build_rag_index.py
+```
+
+**Автосборка при старте:** если задан `ROUTERAI_API_KEY` и файла индекса нет (или таблица `chunks` пуста), при запуске uvicorn индекс соберётся сам (`RAG_AUTO_BUILD=1` по умолчанию; отключить: `RAG_AUTO_BUILD=0`). Первый старт может занять 1–3 минуты.
+
+В UI в шапке чата выберите **RAG** → `fixed`, `structural` или `fixed vs structural` (модель получит оба набора отрывков и может кратко сравнить их по релевантности). Статус индекса: `GET /api/rag/status`. Тесты без сети: `python -m unittest tests.test_rag_chunking -v`.
+
 ## Деплой на VPS (Docker)
 
 ```bash
