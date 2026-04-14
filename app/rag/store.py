@@ -126,6 +126,59 @@ def load_matrix_for_strategy(path: Path, strategy: str) -> tuple[list[ChunkRecor
     return meta, mat
 
 
+def fetch_chunks_by_substrings(
+    path: Path,
+    strategy: str,
+    needles: list[str],
+    *,
+    per_needle_limit: int = 5,
+    max_total: int = 14,
+) -> list[dict[str, Any]]:
+    """
+    Подобрать чанки, в тексте которых встречается хотя бы одна подстрока (LIKE %needle%).
+    Регистронезависимо через LOWER(text).
+    """
+    if not needles or not path.is_file():
+        return []
+    esc = str.maketrans({"%": r"\%", "_": r"\_"})
+    con = sqlite3.connect(path)
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    try:
+        for needle in needles:
+            if not needle or len(needle.strip()) < 3:
+                continue
+            pat = f"%{needle.translate(esc)}%"
+            cur = con.execute(
+                """
+                SELECT chunk_id, source, title, section, text, strategy
+                FROM chunks
+                WHERE strategy = ? AND LOWER(text) LIKE LOWER(?) ESCAPE '\\'
+                LIMIT ?
+                """,
+                (strategy, pat, per_needle_limit),
+            )
+            for cid, src, title, section, text, strat in cur.fetchall():
+                if cid in seen:
+                    continue
+                seen.add(cid)
+                out.append(
+                    {
+                        "chunk_id": cid,
+                        "source": src,
+                        "title": title,
+                        "section": section,
+                        "text": (text or "")[:4000],
+                        "strategy": strat,
+                    }
+                )
+                if len(out) >= max_total:
+                    return out
+    finally:
+        con.close()
+    return out
+
+
 def stats(path: Path) -> dict[str, Any]:
     con = sqlite3.connect(path)
     try:

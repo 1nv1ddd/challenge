@@ -1,0 +1,62 @@
+[
+  {
+    "id": "q01",
+    "question": "По справочнику PolarLine: для кода инцидента PL-203-RET укажи SLA ответа в рабочие часы и email дежурного.",
+    "expected_contains": ["8", "oncall-vol2@example.invalid", "PL-203-RET"],
+    "sources": ["data/rag_corpus/00_polarline_handbook.md"]
+  },
+  {
+    "id": "q02",
+    "question": "Что запрещено делать с таблицей shard_map при эскалации по PL-101-RET и в какой категории открывать тикет?",
+    "expected_contains": ["shard_map", "двойного approve", "northwind-1-ops", "PL-101-RET"],
+    "sources": ["data/rag_corpus/00_polarline_handbook.md"]
+  },
+  {
+    "id": "q03",
+    "question": "Какой код узла указан в разделе A.42 чеклиста в приложении к справочнику PolarLine?",
+    "expected_contains": ["NODE-Q-042"],
+    "sources": ["data/rag_corpus/00_polarline_handbook.md"]
+  },
+  {
+    "id": "q04",
+    "question": "В разделе PL-101-RET как называется флаг конфигурации, дрейф которого нужно проверить?",
+    "expected_contains": ["feature_flag:retention_v1"],
+    "sources": ["data/rag_corpus/00_polarline_handbook.md"]
+  },
+  {
+    "id": "q05",
+    "question": "Где по README этого репозитория лежит SQLite-индекс RAG (относительный путь)?",
+    "expected_contains": ["data/rag_index/chunks.sqlite"],
+    "sources": ["README.md"]
+  },
+  {
+    "id": "q06",
+    "question": "Сколько максимум шагов MCP-цикла за один ответ задано в app/agent.py (константа _MCP_MAX_STEPS)?",
+    "expected_contains": ["8"],
+    "sources": ["app/agent.py"]
+  },
+  {
+    "id": "q07",
+    "question": "Какой код релиза учебного стенда указан в файле 22_eval_knowledge.md?",
+    "expected_contains": ["REL-DAY22-09"],
+    "sources": ["data/rag_corpus/22_eval_knowledge.md"]
+  },
+  {
+    "id": "q08",
+    "question": "Какая версия PolarEval Kit указана в 22_eval_knowledge.md?",
+    "expected_contains": ["2.1", "PolarEval Kit"],
+    "sources": ["data/rag_corpus/22_eval_knowledge.md"]
+  },
+  {
+    "id": "q09",
+    "question": "Сколько дней ретенции аудита в audit_bus для узлов из приложения A.42 (тот же абзац, где NODE-Q-042)?",
+    "expected_contains": ["400"],
+    "sources": ["data/rag_corpus/00_polarline_handbook.md"]
+  },
+  {
+    "id": "q10",
+    "question": "Как в этом приложении расшифровывается аббревиатура RAG согласно 22_eval_knowledge.md?",
+    "expected_contains": ["Retrieval-Augmented Generation"],
+    "sources": ["data/rag_corpus/22_eval_knowledge.md"]
+  }
+]

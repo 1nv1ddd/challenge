@@ -7,5 +7,4 @@ data/agent_memory.json
 data/mcp_scheduler.sqlite
 data/tech_radar_outputs/*
 !data/tech_radar_outputs/.gitkeep
-data/rag_index/*.sqlite
-data/rag_index/*.sqlite-journal
+data/rag_index/

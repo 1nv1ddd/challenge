@@ -386,6 +386,22 @@
     }
     .topbar select:focus { border-color: var(--accent); }
 
+    .topbar .task-plan-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      user-select: none;
+    }
+    .topbar .task-plan-label input {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
     .hamburger {
       display: none;
       background: none;
@@ -852,6 +868,10 @@
         <option value="structural">structural</option>
         <option value="compare">fixed vs structural</option>
       </select>
+      <label class="task-plan-label" title="Вкл: фазы задачи (planning → …) в промпте и авто-шаги. Выкл: обычный чат без машины состояний.">
+        <input type="checkbox" id="taskWorkflowCheck" />
+        План (фазы)
+      </label>
     </div>
 
     <div class="messages" id="messages">
@@ -973,6 +993,8 @@ const $ = s => document.querySelector(s);
 const modelSel    = $('#modelSelect');
 const profileSel  = $('#profileSelect');
 const ragModeSel  = $('#ragModeSelect');
+const taskWorkflowCheck = $('#taskWorkflowCheck');
+const TASK_WF_LS = 'taskWorkflowMode';
 const messagesEl  = $('#messages');
 const welcomeEl   = $('#welcome');
 const userInput   = $('#userInput');
@@ -1026,6 +1048,13 @@ async function init() {
   const RAG_LS = 'aichat_rag_mode';
   ragModeSel.value = localStorage.getItem(RAG_LS) || 'off';
   ragModeSel.addEventListener('change', () => localStorage.setItem(RAG_LS, ragModeSel.value));
+  if (taskWorkflowCheck) {
+    const savedWf = localStorage.getItem(TASK_WF_LS);
+    taskWorkflowCheck.checked = savedWf === '1';
+    taskWorkflowCheck.addEventListener('change', () => {
+      localStorage.setItem(TASK_WF_LS, taskWorkflowCheck.checked ? '1' : '0');
+    });
+  }
   profileSel.value = defaultProfileId;
   fillProfileEditor(defaultProfileId);
   applyTaskStateToControls({
@@ -1281,7 +1310,15 @@ function buildMetaHTML(meta) {
       const nf = (r.rag_hits_fixed || []).length;
       const ns = (r.rag_hits_structural || []).length;
       const nm = r.rag_mode ? escapeHtml(String(r.rag_mode)) : '';
-      ragInfo = `<div class="meta-item">RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}</div>`;
+      const subq =
+        r.rag_subqueries != null && r.rag_subqueries !== undefined
+          ? ` · подзапросов: <span class="meta-val">${Number(r.rag_subqueries)}</span>`
+          : '';
+      const kwN =
+        r.rag_keyword_needles != null && r.rag_keyword_needles !== undefined
+          ? ` · якорей: <span class="meta-val">${Number(r.rag_keyword_needles)}</span>`
+          : '';
+      ragInfo = `<div class="meta-item">RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}${subq}${kwN}</div>`;
     }
   }
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
@@ -1292,7 +1329,8 @@ function buildMetaHTML(meta) {
   const taskGuard = meta.workflow_guard_applied
     ? ' · <span class="meta-val" title="Сработал блок обхода валидации">guard</span>'
     : '';
-  const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}${taskAllowed}${taskGuard}</div>`;
+  const planOff = meta.task_workflow_enabled === false ? ' · <span class="meta-val">план выкл</span>' : '';
+  const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}${taskAllowed}${taskGuard}${planOff}</div>`;
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
     ? `<div class="meta-item">Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span> (${(meta.memory_auto_saved_keys || []).join(', ')})</div>`
     : '';
@@ -1975,9 +2013,10 @@ async function send() {
           return {
             enabled: true,
             strategy: m === 'compare' ? 'compare' : m,
-            top_k: 8,
+            top_k: 14,
           };
         })(),
+        task_workflow: !!(taskWorkflowCheck && taskWorkflowCheck.checked),
       }),
     });
     const reader = resp.body.getReader();

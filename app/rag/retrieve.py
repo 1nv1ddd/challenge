@@ -7,8 +7,11 @@ from typing import Any, Awaitable, Callable
 
 import numpy as np
 
+from .anchors import rag_keyword_needles
 from .chunking import ChunkRecord
-from .store import load_matrix_for_strategy
+from .store import fetch_chunks_by_substrings, load_matrix_for_strategy
+
+KEYWORD_HIT_SCORE = 0.987
 
 
 def _norm_rows(m: np.ndarray) -> np.ndarray:
@@ -48,6 +51,63 @@ def search_cosine(
             }
         )
     return out
+
+
+def merge_hits_by_max_score(
+    hit_lists: list[list[dict[str, Any]]],
+    *,
+    max_chunks: int,
+) -> list[dict[str, Any]]:
+    """Объединить результаты нескольких поисков: один chunk_id — лучший score."""
+    best: dict[str, dict[str, Any]] = {}
+    for hits in hit_lists:
+        for h in hits:
+            cid = str(h["chunk_id"])
+            prev = best.get(cid)
+            if prev is None or float(h["score"]) > float(prev["score"]):
+                best[cid] = dict(h)
+    merged = sorted(best.values(), key=lambda x: float(x["score"]), reverse=True)
+    return merged[:max_chunks]
+
+
+def multi_search_merge(
+    query_vecs: list[list[float]],
+    meta: list[ChunkRecord],
+    matrix: np.ndarray,
+    *,
+    per_k: int,
+    max_chunks: int,
+) -> list[dict[str, Any]]:
+    lists = [search_cosine(qv, meta, matrix, top_k=per_k) for qv in query_vecs]
+    return merge_hits_by_max_score(lists, max_chunks=max_chunks)
+
+
+def augment_hits_with_keyword_match(
+    index_path: Path,
+    strategy: str,
+    user_text: str,
+    semantic_hits: list[dict[str, Any]],
+    *,
+    max_total: int,
+    per_needle_limit: int = 5,
+    max_keyword_chunks: int = 12,
+) -> list[dict[str, Any]]:
+    """
+    Гибридный RAG: чанки, где буквально встречаются коды PL-*, NODE-Q-*, константы и т.д.,
+    поднимаются в топ даже при низкой косинусной близости общего запроса.
+    """
+    needles = rag_keyword_needles(user_text)
+    if not needles:
+        return semantic_hits[:max_total]
+    rows = fetch_chunks_by_substrings(
+        index_path,
+        strategy,
+        needles,
+        per_needle_limit=per_needle_limit,
+        max_total=max_keyword_chunks,
+    )
+    kw_hits: list[dict[str, Any]] = [{**r, "score": KEYWORD_HIT_SCORE} for r in rows]
+    return merge_hits_by_max_score([semantic_hits, kw_hits], max_chunks=max_total)
 
 
 EmbedBatchFn = Callable[[list[str]], Awaitable[list[list[float]]]]

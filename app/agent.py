@@ -1119,7 +1119,9 @@ class SimpleChatAgent:
             return None, {}
         from .rag import pipeline as rag_pipeline
         from .rag.embeddings import embed_texts_async
-        from .rag.retrieve import search_cosine
+        from .rag.query_split import rag_subqueries
+        from .rag.anchors import rag_keyword_needles as _rag_kw_needles
+        from .rag.retrieve import augment_hits_with_keyword_match, multi_search_merge, search_cosine
         from .rag.store import load_matrix_for_strategy
 
         raw_path = rag_cfg.get("index_path")
@@ -1137,9 +1139,15 @@ class SimpleChatAgent:
             )
         mode = str(rag_cfg.get("strategy") or "fixed").lower().strip()
         top_k = int(rag_cfg.get("top_k") or 5)
-        meta_out: dict = {"rag_mode": mode, "rag_top_k": top_k}
+        subqs = rag_subqueries(user_content)
+        meta_out: dict = {
+            "rag_mode": mode,
+            "rag_top_k": top_k,
+            "rag_subqueries": len(subqs),
+            "rag_keyword_needles": len(_rag_kw_needles(user_content)),
+        }
         try:
-            q_vec = (await embed_texts_async([user_content]))[0]
+            q_vecs = await embed_texts_async(subqs)
         except Exception as e:  # noqa: BLE001
             return (
                 Message(role="system", content=f"[RAG] Ошибка эмбеддинга запроса: {e}"),
@@ -1162,20 +1170,43 @@ class SimpleChatAgent:
             "- **RAG** в этом приложении = **Retrieval-Augmented Generation** (поиск по локальному индексу текстов), "
             "не «Red-Amber-Green» и не другие расшифровки.\n"
             "- **MCP** в этом репозитории = **Model Context Protocol** (см. отрывки из кода/README).\n"
+            "- Набор отрывков включает **семантический поиск** и чанки с **точным вхождением** кодов из запроса "
+            "(PL-*-RET, NODE-Q-*, константы в app/agent.py). Если отрывок явно отвечает на подвопрос — используй его.\n"
             "- Отвечай **только** по фактам из блоков «Набор отрывков» ниже. Не дополняй «типичными советами» и общими шаблонами.\n"
             "- Если точного ответа в отрывках нет — напиши явно: «В переданных фрагментах нет ответа на …» и не выдумывай цифры, контакты и SLA.\n"
             "- Укажи **номер отрывка [n]** и **файл** `source`, откуда взял факт.\n\n"
         )
 
+        kw_ctx_cap = min(28, top_k + max(len(subqs), 8) + 6)
+
         if mode == "compare":
             mf, matf = load_matrix_for_strategy(idx, "fixed")
             ms, mats = load_matrix_for_strategy(idx, "structural")
-            hf = search_cosine(q_vec, mf, matf, top_k=top_k)
-            hs = search_cosine(q_vec, ms, mats, top_k=top_k)
+            if len(subqs) == 1:
+                hf = search_cosine(q_vecs[0], mf, matf, top_k=top_k)
+                hs = search_cosine(q_vecs[0], ms, mats, top_k=top_k)
+            else:
+                per_k = max(5, min(top_k + 3, (top_k * 3) // max(1, len(subqs)) + 5))
+                max_merged = min(26, top_k + len(subqs) + 6)
+                hf = multi_search_merge(q_vecs, mf, matf, per_k=per_k, max_chunks=max_merged)
+                hs = multi_search_merge(q_vecs, ms, mats, per_k=per_k, max_chunks=max_merged)
+            hf = augment_hits_with_keyword_match(
+                idx, "fixed", user_content, hf, max_total=kw_ctx_cap
+            )
+            hs = augment_hits_with_keyword_match(
+                idx, "structural", user_content, hs, max_total=kw_ctx_cap
+            )
             meta_out["rag_hits_fixed"] = _shrink(hf)
             meta_out["rag_hits_structural"] = _shrink(hs)
+            mq_note = (
+                f"Запрос разбит на **{len(subqs)}** подвопросов для поиска; для каждого — отдельный эмбеддинг, "
+                "результаты объединены (лучший score на чанк).\n\n"
+                if len(subqs) > 1
+                else ""
+            )
             intro = (
                 _rag_grounding
+                + mq_note
                 + "Ниже — фрагменты из **локального корпуса** (учебный справочник + README + `app/agent.py`), "
                 "подобранные **семантическим поиском** по двум стратегиям chunking:\n"
                 "- **fixed** — окна фиксированной длины;\n"
@@ -1194,12 +1225,25 @@ class SimpleChatAgent:
 
         strat = "fixed" if mode == "fixed" else "structural"
         m, matrix = load_matrix_for_strategy(idx, strat)
-        h = search_cosine(q_vec, m, matrix, top_k=top_k)
-        meta_out[f"rag_hits_{strat}"] = _shrink(h)
-        intro = (
-            _rag_grounding
-            + f"Ниже — топ-{top_k} отрывков из локального индекса (chunking: **{strat}**).\n\n"
+        if len(subqs) == 1:
+            h = search_cosine(q_vecs[0], m, matrix, top_k=top_k)
+        else:
+            per_k = max(5, min(top_k + 3, (top_k * 3) // max(1, len(subqs)) + 5))
+            max_merged = min(26, top_k + len(subqs) + 6)
+            h = multi_search_merge(q_vecs, m, matrix, per_k=per_k, max_chunks=max_merged)
+        h = augment_hits_with_keyword_match(
+            idx, strat, user_content, h, max_total=kw_ctx_cap
         )
+        meta_out[f"rag_hits_{strat}"] = _shrink(h)
+        mq_note = (
+            (
+                f"Запрос разбит на **{len(subqs)}** подвопросов; ниже до **{len(h)}** объединённых отрывков "
+                f"(chunking: **{strat}**).\n\n"
+            )
+            if len(subqs) > 1
+            else f"Ниже — топ-{top_k} отрывков из локального индекса (chunking: **{strat}**).\n\n"
+        )
+        intro = _rag_grounding + mq_note
         body = intro + self._format_rag_hits_block(strat, h)
         return Message(role="system", content=body), meta_out
 
@@ -1333,6 +1377,33 @@ class SimpleChatAgent:
             "task",
         )
         return any(m in t for m in markers)
+
+    @staticmethod
+    def _is_reference_or_doc_qa_message(text: str) -> bool:
+        """Длинные фактические вопросы по корпусу/README/коду — не активировать FSM задачи и не подмешивать её в промпт."""
+        t = (text or "").strip().lower()
+        if len(t) < 60:
+            return False
+        anchors = (
+            "pl-",
+            "node-q-",
+            "readme",
+            "22_eval",
+            "polarline",
+            "shard_map",
+            "audit_bus",
+            "chunks.sqlite",
+            "retention_v1",
+            "polareval",
+            "rel-day22",
+            "_mcp_max_steps",
+            "app/agent.py",
+            "справочник",
+            "feature_flag",
+        )
+        if not any(a in t for a in anchors):
+            return False
+        return "?" in t or t.count("\n") >= 1
 
     def _facts_system_message(self, facts: dict) -> Message | None:
         if not facts:
@@ -1511,6 +1582,43 @@ class SimpleChatAgent:
                 "messages": serialized,
             }
 
+    async def compare_rag_answers(
+        self,
+        provider_name: str,
+        model: str,
+        user_text: str,
+        *,
+        temperature: float = 0.35,
+        rag_strategy: str = "fixed",
+        top_k: int = 8,
+        index_path: str | None = None,
+    ) -> dict:
+        """День 22: вопрос → два полных ответа LLM (без RAG и с подмешанным контекстом из индекса)."""
+        provider = self._validate_provider(provider_name)
+        self._validate_model(provider, provider_name, model)
+        t = self._normalize_temperature(temperature)
+        user_msg = Message(role="user", content=user_text)
+
+        async def _collect(msgs: list[Message]) -> str:
+            parts: list[str] = []
+            async for result in provider.stream_chat(msgs, model, t):
+                if result.text:
+                    parts.append(result.text)
+            return "".join(parts).strip()
+
+        without_rag = await _collect([user_msg])
+        rag_cfg: dict = {"enabled": True, "strategy": rag_strategy, "top_k": top_k}
+        if index_path:
+            rag_cfg["index_path"] = index_path
+        rag_sys, rag_meta = await self._rag_context_message(user_text, rag_cfg)
+        with_msgs = [rag_sys, user_msg] if rag_sys is not None else [user_msg]
+        with_rag = await _collect(with_msgs)
+        return {
+            "without_rag": without_rag,
+            "with_rag": with_rag,
+            "rag": rag_meta,
+        }
+
     async def stream_reply(
         self,
         provider_name: str,
@@ -1523,6 +1631,7 @@ class SimpleChatAgent:
         profile_id: str | None = None,
         resume: bool = False,
         rag: dict | None = None,
+        task_workflow: bool | None = None,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
         self._validate_model(provider, provider_name, model)
@@ -1534,6 +1643,8 @@ class SimpleChatAgent:
             raise ValueError("No valid messages to send")
 
         state = self._get_conversation_state(conversation_id)
+        # None = старые клиенты: фазы задачи как раньше. False = только обычный чат (UI «План» выкл).
+        task_workflow_enabled = True if task_workflow is None else bool(task_workflow)
         if len(incoming) != 1 or incoming[0].role != "user":
             inv_msg = self._invariants_system_message(state.get("invariants", {}))
             profile_msg = self._profile_system_message(profile)
@@ -1569,10 +1680,12 @@ class SimpleChatAgent:
                 "task_allowed_next_phases": [],
                 "invariants_count": len(inv_norm),
                 "invariants_applied": inv_msg is not None,
+                "task_workflow_enabled": task_workflow_enabled,
             }
             user_msg = incoming[-1]
         else:
             user_msg = incoming[0]
+            ref_qa = self._is_reference_or_doc_qa_message(user_msg.content)
             current_task_state = self._normalize_task_state(state.get("task_state", {}))
             if current_task_state.get("status") == "paused" and not resume:
                 raise ValueError("Task is paused. Resume generation to continue.")
@@ -1588,21 +1701,30 @@ class SimpleChatAgent:
                 if extra:
                     resume_text += f"\nAdditional instruction from user:\n{extra}"
                 user_msg = Message(role="user", content=resume_text)
-            elif self._is_task_intent_message(user_msg.content) and not current_task_state.get(
-                "task_active", False
+            elif (
+                task_workflow_enabled
+                and self._is_task_intent_message(user_msg.content)
+                and not ref_qa
+                and not current_task_state.get("task_active", False)
             ):
                 # Do not reset FSM on follow-ups that still match markers (e.g. "план" + "реализ" in approval).
                 state["task_state"] = self._transition_task_state(
                     task_state=current_task_state,
                     event=TASK_EVENT_NEW_TASK,
                 )
-            self._promote_to_plan_approved_if_user_approved(state, user_msg.content)
-            self._promote_validation_to_done_if_user_confirms(state, user_msg.content)
+            if task_workflow_enabled:
+                self._promote_to_plan_approved_if_user_approved(state, user_msg.content)
+                self._promote_validation_to_done_if_user_confirms(state, user_msg.content)
             current_task_state = self._normalize_task_state(state.get("task_state", {}))
-            include_task_state = (
-                resume
-                or bool(current_task_state.get("task_active", False))
-                or self._is_task_intent_message(user_msg.content)
+            include_task_state = resume or (
+                task_workflow_enabled
+                and (
+                    (
+                        bool(current_task_state.get("task_active", False))
+                        or self._is_task_intent_message(user_msg.content)
+                    )
+                    and not ref_qa
+                )
             )
             self._update_facts(state, user_msg.content)
             working_keys = self._auto_update_working_memory(state, user_msg.content)
@@ -1620,6 +1742,7 @@ class SimpleChatAgent:
             )
             context_meta["memory_auto_working_keys"] = working_keys
             context_meta["memory_auto_keys"] = auto_keys
+            context_meta["task_workflow_enabled"] = task_workflow_enabled
 
         bridge = mcp_panel.get_mcp_bridge()
         mcp_instr = self._mcp_system_message_from_bridge(bridge) if bridge else None
@@ -1751,7 +1874,8 @@ class SimpleChatAgent:
         current_task_state = self._normalize_task_state(state.get("task_state", {}))
         single_user_turn = len(incoming) == 1 and incoming[0].role == "user"
         auto_advance_phase = (
-            single_user_turn
+            task_workflow_enabled
+            and single_user_turn
             and not paused_during_stream
             and not resume
             and not self._is_smalltalk_message(user_msg.content)
@@ -1838,6 +1962,7 @@ class SimpleChatAgent:
             "task_allowed_next_phases": list(
                 TASK_ALLOWED_EDGES.get(task_state_after.get("phase", "planning"), ())
             ),
+            "task_workflow_enabled": task_workflow_enabled,
             "paused_during_stream": paused_during_stream,
             "memory_short_notes_count": int(context_meta.get("short_term_count", WINDOW_SIZE_MESSAGES)),
             "memory_working_count": len(working_memory),

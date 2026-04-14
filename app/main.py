@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -86,6 +86,8 @@ async def chat(request: Request):
     profile_id: str | None = body.get("profile_id")
     resume: bool = bool(body.get("resume", False))
     rag = body.get("rag")
+    raw_tw = body.get("task_workflow")
+    task_workflow: bool | None = None if raw_tw is None else bool(raw_tw)
 
     async def event_stream():
         try:
@@ -100,6 +102,7 @@ async def chat(request: Request):
                 profile_id=profile_id,
                 resume=resume,
                 rag=rag if isinstance(rag, dict) else None,
+                task_workflow=task_workflow,
             ):
                 if result.text is not None:
                     escaped = json.dumps(result.text, ensure_ascii=False)
@@ -118,6 +121,42 @@ async def chat(request: Request):
             yield f"data: [ERROR] {msg}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@app.post("/api/rag/compare")
+async def rag_compare(request: Request):
+    """День 22: один вопрос — два ответа (без контекста из индекса и с RAG)."""
+    if not providers:
+        raise HTTPException(status_code=503, detail="Нет настроенного провайдера (нужен ROUTERAI_API_KEY).")
+    body = await request.json()
+    provider_name = str(body.get("provider") or "").strip()
+    model = str(body.get("model") or "").strip()
+    message = str(body.get("message") or "").strip()
+    if not provider_name or not model or not message:
+        raise HTTPException(
+            status_code=400,
+            detail="Нужны поля provider, model и непустой message.",
+        )
+    temperature = float(body.get("temperature", 0.35))
+    rag_strategy = str(body.get("rag_strategy") or "fixed").lower().strip()
+    top_k = int(body.get("top_k") or 8)
+    raw_idx = body.get("index_path")
+    index_path = str(raw_idx).strip() if isinstance(raw_idx, str) and raw_idx.strip() else None
+    try:
+        out = await agent.compare_rag_answers(
+            provider_name,
+            model,
+            message,
+            temperature=temperature,
+            rag_strategy=rag_strategy,
+            top_k=top_k,
+            index_path=index_path,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=400, detail=str(exc).strip() or "LookupError") from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc).strip() or "ValueError") from exc
+    return out
 
 
 @app.get("/api/rag/status")
