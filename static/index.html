@@ -556,8 +556,25 @@
     }
     .msg-meta .meta-item {
       display: flex;
-      align-items: center;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+      max-width: 100%;
+    }
+    .msg-meta .meta-item--block {
+      flex: 1 1 100%;
+      flex-direction: column;
+      align-items: stretch;
       gap: 4px;
+    }
+    .msg-meta .meta-detail {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.4;
+      margin: 0;
     }
     .msg-meta .meta-val { color: var(--text-primary); font-weight: 600; }
     .context-gauge {
@@ -868,6 +885,10 @@
         <option value="structural">structural</option>
         <option value="compare">fixed vs structural</option>
       </select>
+      <label class="task-plan-label" title="Filtered / rewritten: порог similarity, лексический реранк, query rewrite (якоря). Нужен RAG ≠ выкл.">
+        <input type="checkbox" id="ragDay23Check" />
+        фильтр&nbsp;+&nbsp;rewrite
+      </label>
       <label class="task-plan-label" title="Вкл: фазы задачи (planning → …) в промпте и авто-шаги. Выкл: обычный чат без машины состояний.">
         <input type="checkbox" id="taskWorkflowCheck" />
         План (фазы)
@@ -993,8 +1014,10 @@ const $ = s => document.querySelector(s);
 const modelSel    = $('#modelSelect');
 const profileSel  = $('#profileSelect');
 const ragModeSel  = $('#ragModeSelect');
+const ragDay23Check = $('#ragDay23Check');
 const taskWorkflowCheck = $('#taskWorkflowCheck');
 const TASK_WF_LS = 'taskWorkflowMode';
+const RAG_DAY23_LS = 'aichat_rag_day23';
 const messagesEl  = $('#messages');
 const welcomeEl   = $('#welcome');
 const userInput   = $('#userInput');
@@ -1048,6 +1071,12 @@ async function init() {
   const RAG_LS = 'aichat_rag_mode';
   ragModeSel.value = localStorage.getItem(RAG_LS) || 'off';
   ragModeSel.addEventListener('change', () => localStorage.setItem(RAG_LS, ragModeSel.value));
+  if (ragDay23Check) {
+    ragDay23Check.checked = localStorage.getItem(RAG_DAY23_LS) === '1';
+    ragDay23Check.addEventListener('change', () => {
+      localStorage.setItem(RAG_DAY23_LS, ragDay23Check.checked ? '1' : '0');
+    });
+  }
   if (taskWorkflowCheck) {
     const savedWf = localStorage.getItem(TASK_WF_LS);
     taskWorkflowCheck.checked = savedWf === '1';
@@ -1318,7 +1347,14 @@ function buildMetaHTML(meta) {
         r.rag_keyword_needles != null && r.rag_keyword_needles !== undefined
           ? ` · якорей: <span class="meta-val">${Number(r.rag_keyword_needles)}</span>`
           : '';
-      ragInfo = `<div class="meta-item">RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}${subq}${kwN}</div>`;
+      let ragExtra = '';
+      if (r.rag_day23_enhanced) {
+        const pp = r.rag_postprocess || {};
+        const pf = pp.hits_prefilter != null ? pp.hits_prefilter : '—';
+        const af = pp.hits_after_score_filter != null ? pp.hits_after_score_filter : '—';
+        ragExtra = `<div class="meta-detail"><span class="meta-val">filtered / rewritten</span> · fetch=${r.rag_top_k_fetch ?? '—'} · min_sim=${r.rag_min_similarity ?? '—'} · rerank=${escapeHtml(String(r.rag_rerank || '—'))} · чанки ${pf}→${af}</div>`;
+      }
+      ragInfo = `<div class="meta-item meta-item--block"><div>RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}${subq}${kwN}</div>${ragExtra}</div>`;
     }
   }
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;
@@ -1332,10 +1368,10 @@ function buildMetaHTML(meta) {
   const planOff = meta.task_workflow_enabled === false ? ' · <span class="meta-val">план выкл</span>' : '';
   const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}${taskAllowed}${taskGuard}${planOff}</div>`;
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
-    ? `<div class="meta-item">Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span> (${(meta.memory_auto_saved_keys || []).join(', ')})</div>`
+    ? `<div class="meta-item meta-item--block"><div>Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span></div><div class="meta-detail">${(meta.memory_auto_saved_keys || []).map(k => escapeHtml(String(k))).join(', ')}</div></div>`
     : '';
   const autoWorkingInfo = (meta.memory_auto_working_count && meta.memory_auto_working_count > 0)
-    ? `<div class="meta-item">Авто-сохранено в working: <span class="meta-val">${meta.memory_auto_working_count}</span> (${(meta.memory_auto_working_keys || []).join(', ')})</div>`
+    ? `<div class="meta-item meta-item--block"><div>Авто-сохранено в working: <span class="meta-val">${meta.memory_auto_working_count}</span></div><div class="meta-detail">${(meta.memory_auto_working_keys || []).map(k => escapeHtml(String(k))).join(', ')}</div></div>`
     : '';
   const compressionInfo = (meta.prompt_tokens_no_compression_est !== undefined && meta.prompt_tokens_with_compression_est !== undefined)
     ? `<div class="meta-item">Промпт без/со сжатием: <span class="meta-val">${meta.prompt_tokens_no_compression_est} / ${meta.prompt_tokens_with_compression_est}</span> (экономия: ${meta.saved_tokens_est ?? 0} ток.)</div>`
@@ -2010,11 +2046,18 @@ async function send() {
         rag: (() => {
           const m = ragModeSel && ragModeSel.value;
           if (!m || m === 'off') return null;
-          return {
+          const o = {
             enabled: true,
             strategy: m === 'compare' ? 'compare' : m,
             top_k: 14,
           };
+          if (ragDay23Check && ragDay23Check.checked) {
+            o.query_rewrite = true;
+            o.min_similarity = 0.28;
+            o.rerank = 'lexical';
+            o.top_k_fetch = 28;
+          }
+          return o;
         })(),
         task_workflow: !!(taskWorkflowCheck && taskWorkflowCheck.checked),
       }),

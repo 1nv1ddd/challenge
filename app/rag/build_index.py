@@ -17,6 +17,7 @@ from .pipeline import (
     default_index_path,
     project_root,
 )
+from .index_meta import index_needs_build
 from .store import clear_strategy, init_db, insert_chunks
 
 log = logging.getLogger(__name__)
@@ -81,9 +82,16 @@ def build_rag_index(
     idx = index_path or default_index_path()
     extra: list[Path] = []
     if include_extra:
-        for p in (root / "README.md", root / "app" / "agent.py"):
-            if p.is_file():
-                extra.append(p)
+        readme = root / "README.md"
+        if readme.is_file():
+            extra.append(readme)
+        agent_pkg = root / "app" / "agent"
+        if agent_pkg.is_dir():
+            extra.extend(sorted(p for p in agent_pkg.rglob("*.py") if p.is_file()))
+        else:
+            legacy_agent = root / "app" / "agent.py"
+            if legacy_agent.is_file():
+                extra.append(legacy_agent)
 
     paths = collect_document_paths(corpus, extra_files=extra)
     if not paths:
@@ -123,24 +131,6 @@ def build_rag_index(
             embed_model,
         )
     return idx
-
-
-def index_needs_build(path: Path | None = None) -> bool:
-    """True если файла нет или таблица chunks пуста."""
-    p = path or default_index_path()
-    if not p.is_file():
-        return True
-    import sqlite3
-
-    con = sqlite3.connect(p)
-    try:
-        cur = con.execute("SELECT COUNT(*) FROM chunks")
-        n = int(cur.fetchone()[0])
-        return n == 0
-    except sqlite3.OperationalError:
-        return True
-    finally:
-        con.close()
 
 
 def main_cli(argv: list[str] | None = None) -> None:

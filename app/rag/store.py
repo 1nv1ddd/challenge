@@ -180,17 +180,6 @@ def fetch_chunks_by_substrings(
 
 
 def stats(path: Path) -> dict[str, Any]:
-    con = sqlite3.connect(path)
-    try:
-        cur = con.execute(
-            "SELECT strategy, COUNT(*), AVG(LENGTH(text)) FROM chunks GROUP BY strategy"
-        )
-        rows = cur.fetchall()
-    finally:
-        con.close()
-    return {
-        "by_strategy": [
-            {"strategy": r[0], "count": r[1], "avg_text_len": round(r[2] or 0, 1)}
-            for r in rows
-        ]
-    }
+    from .index_meta import rag_index_stats
+
+    return rag_index_stats(path)
