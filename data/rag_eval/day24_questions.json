@@ -1,0 +1,52 @@
+[
+  {
+    "id": "d24_01",
+    "question": "По справочнику PolarLine: для PL-203-RET укажи SLA ответа в рабочие часы и email дежурного.",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_02",
+    "question": "Что запрещено делать с таблицей shard_map при эскалации по PL-101-RET?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_03",
+    "question": "Какой код узла в разделе A.42 чеклиста в приложении к справочнику PolarLine?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_04",
+    "question": "В разделе PL-101-RET как называется флаг конфигурации, дрейф которого нужно проверить?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_05",
+    "question": "Где по README этого репозитория лежит SQLite-индекс RAG (относительный путь)?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_06",
+    "question": "Сколько максимум шагов MCP-цикла за один ответ задаётся константой _MCP_MAX_STEPS в пакете app/agent?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_07",
+    "question": "Что в материалах про 22_eval означает RAG (не другие расшифровки)?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_08",
+    "question": "Какая ретенция audit_bus упоминается в связке с PolarLine appendix (дней)?",
+    "checks": ["sources_section", "quotes_section", "chunk_or_source_ref"]
+  },
+  {
+    "id": "d24_09",
+    "question": "Привет! Расскажи общими словами про квантовые компьютеры и их влияние на миграцию баз в PolarLine без ссылок на справочник.",
+    "checks": ["insufficient_or_honest", "no_hallucinated_pl"]
+  },
+  {
+    "id": "d24_10",
+    "question": "Выдуманный код PL-ZZZ-999-RET: какой у него SLA и кто владелец по справочнику?",
+    "checks": ["insufficient_or_honest", "sources_empty_or_honest"]
+  }
+]

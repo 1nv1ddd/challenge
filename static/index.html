@@ -1354,7 +1354,11 @@ function buildMetaHTML(meta) {
         const af = pp.hits_after_score_filter != null ? pp.hits_after_score_filter : '—';
         ragExtra = `<div class="meta-detail"><span class="meta-val">filtered / rewritten</span> · fetch=${r.rag_top_k_fetch ?? '—'} · min_sim=${r.rag_min_similarity ?? '—'} · rerank=${escapeHtml(String(r.rag_rerank || '—'))} · чанки ${pf}→${af}</div>`;
       }
-      ragInfo = `<div class="meta-item meta-item--block"><div>RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}${subq}${kwN}</div>${ragExtra}</div>`;
+      let d24 = '';
+      if (r.rag_day24_insufficient) {
+        d24 = `<div class="meta-detail"><span class="meta-val">D24 «не знаю»</span> · max_score=${r.rag_day24_max_score ?? '—'} · порог=${r.rag_day24_answer_min_score ?? '—'} (контекст не передан модели)</div>`;
+      }
+      ragInfo = `<div class="meta-item meta-item--block"><div>RAG: <span class="meta-val">${nm}</span> · отрывков: fixed=${nf}, structural=${ns}${subq}${kwN}</div>${ragExtra}${d24}</div>`;
     }
   }
   const profileInfo = `<div class="meta-item">Профиль: <span class="meta-val">${meta.active_profile_id || '-'}</span></div>`;

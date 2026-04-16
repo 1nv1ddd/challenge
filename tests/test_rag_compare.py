@@ -32,6 +32,7 @@ class TestCompareRagAnswers(unittest.TestCase):
                     return_value=(
                         Message(role="system", content="[RAG ctx]"),
                         {"rag_mode": "fixed", "rag_top_k": 3},
+                        None,
                     )
                 )
                 out = await agent.compare_rag_answers(

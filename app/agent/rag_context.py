@@ -13,8 +13,9 @@ class AgentRagMixin:
         lines = [f"### Набор отрывков: **{label}**", ""]
         for i, h in enumerate(hits, 1):
             sec = h.get("section") or "—"
+            cid = h.get("chunk_id", "—")
             lines.append(
-                f"**[{i}]** score={float(h['score']):.4f} | файл `{h['source']}` | section: {sec}"
+                f"**[{i}]** chunk_id=`{cid}` score={float(h['score']):.4f} | файл `{h['source']}` | section: {sec}"
             )
             lines.append("")
             lines.append(str(h.get("text", ""))[:3200].strip())
@@ -25,10 +26,18 @@ class AgentRagMixin:
         self,
         user_content: str,
         rag_cfg: dict | None,
-    ) -> tuple[Message | None, dict]:
+    ) -> tuple[Message | None, dict, list[dict] | None]:
         if not rag_cfg or not rag_cfg.get("enabled"):
-            return None, {}
+            return None, {}, None
         from ..rag import pipeline as rag_pipeline
+        from ..rag.day24 import (
+            answer_min_score_from_cfg,
+            combined_insufficient_evidence,
+            insufficient_evidence,
+            max_hit_score,
+            merge_hits_for_appendix,
+            refusal_system_message,
+        )
         from ..rag.embeddings import embed_texts_async
         from ..rag.post_retrieval import postprocess_hits, rag_enhancements_enabled
         from ..rag.query_rewrite import heuristic_query_rewrite
@@ -49,10 +58,12 @@ class AgentRagMixin:
                     ),
                 ),
                 {"rag_error": "index_missing"},
+                None,
             )
         mode = str(rag_cfg.get("strategy") or "fixed").lower().strip()
         top_k = int(rag_cfg.get("top_k") or 5)
         enhanced = rag_enhancements_enabled(rag_cfg)
+        ans_min = answer_min_score_from_cfg(rag_cfg)
 
         text_for_subq = user_content
         rewrite_meta: dict = {}
@@ -93,6 +104,7 @@ class AgentRagMixin:
             "rag_min_similarity": min_sim if enhanced else 0.0,
             "rag_rerank": rerank_m if enhanced else "none",
             "rag_query_rewrite": bool(enhanced and rag_cfg.get("query_rewrite")),
+            "rag_day24_answer_min_score": ans_min,
         }
         if rewrite_meta:
             meta_out["rag_rewrite_meta"] = rewrite_meta
@@ -103,6 +115,7 @@ class AgentRagMixin:
             return (
                 Message(role="system", content=f"[RAG] Ошибка эмбеддинга запроса: {e}"),
                 {"rag_error": str(e)},
+                None,
             )
 
         def _shrink(hits: list[dict]) -> list[dict]:
@@ -132,18 +145,30 @@ class AgentRagMixin:
             )
 
         _rag_grounding = (
-            "ПРАВИЛА (обязательны):\n"
-            "- **RAG** в этом приложении = **Retrieval-Augmented Generation** (поиск по локальному индексу текстов), "
-            "не «Red-Amber-Green» и не другие расшифровки.\n"
-            "- **MCP** в этом репозитории = **Model Context Protocol** (см. отрывки из кода/README).\n"
-            "- Набор отрывков включает **семантический поиск** и чанки с **точным вхождением** кодов из запроса "
-            "(PL-*-RET, NODE-Q-*, константы в пакете app/agent). Если отрывок явно отвечает на подвопрос — используй его.\n"
-            "- Отвечай **только** по фактам из блоков «Набор отрывков» ниже. Не дополняй «типичными советами» и общими шаблонами.\n"
-            "- Если точного ответа в отрывках нет — напиши явно: «В переданных фрагментах нет ответа на …» и не выдумывай цифры, контакты и SLA.\n"
-            "- Укажи **номер отрывка [n]** и **файл** `source`, откуда взял факт.\n\n"
+            "ПРАВИЛА:\n"
+            "- **RAG** = **Retrieval-Augmented Generation** (локальный поиск по текстам), не другие расшифровки.\n"
+            "- **MCP** = **Model Context Protocol** (см. отрывки).\n"
+            "- Факты **только** из блоков «Набор отрывков». Не дополняй типичными советами из памяти модели.\n"
+            "- В ответе пользователю оформи **только** `## Ответ` (суть по-русски из отрывков).\n"
+            "- Разделы `## Источники` и `## Цитаты` **добавляет сервер** после твоего текста; **не пиши** их.\n"
+            "- Если факта нет в отрывках — так и напиши в **Ответ**.\n\n"
         )
 
         kw_ctx_cap = min(28, top_k + max(len(subqs), 8) + 6)
+
+        def _refusal_for(hits_list: list[list[dict]]) -> tuple[Message, dict] | None:
+            flat = [x for sub in hits_list for x in (sub or [])]
+            if not combined_insufficient_evidence(hits_list, ans_min):
+                return None
+            best = max((max_hit_score(h) for h in hits_list if h), default=0.0)
+            meta_out["rag_day24_insufficient"] = True
+            meta_out["rag_day24_max_score"] = round(best, 4)
+            msg = refusal_system_message(
+                best_score=best,
+                threshold=ans_min,
+                hit_count=len(flat),
+            )
+            return Message(role="system", content=msg), meta_out
 
         if mode == "compare":
             mf, matf = load_matrix_for_strategy(idx, "fixed")
@@ -170,6 +195,15 @@ class AgentRagMixin:
                 )
             meta_out["rag_hits_fixed"] = _shrink(hf)
             meta_out["rag_hits_structural"] = _shrink(hs)
+            meta_out["rag_day24_max_score"] = round(
+                max(max_hit_score(hf), max_hit_score(hs)),
+                4,
+            )
+            ref = _refusal_for([hf, hs])
+            if ref is not None:
+                rm, rd = ref
+                return rm, rd, None
+
             mq_note = (
                 f"Запрос разбит на **{len(subqs)}** подвопросов для поиска; для каждого — отдельный эмбеддинг, "
                 "результаты объединены (лучший score на чанк).\n\n"
@@ -181,16 +215,21 @@ class AgentRagMixin:
                 day23_note = (
                     f"\n_(День 23: поиск с top_k_fetch≈{k_search}, затем порог {min_sim}, реранк: {rerank_m})_\n\n"
                 )
+            compare_tail = (
+                "Сразу после `## Ответ` добавь блок **`## Сравнение chunking`** "
+                "(2–5 предложений: fixed vs structural). "
+                "Сервер **вставит** `## Источники` и `## Цитаты` между ответом и этим блоком "
+                "— в итоге порядок разделов будет: Ответ → Источники → Цитаты → Сравнение chunking.\n\n"
+            )
             intro = (
                 _rag_grounding
+                + compare_tail
                 + day23_note
                 + mq_note
                 + "Ниже — фрагменты из **локального корпуса** (учебный справочник + README + код `app/agent`), "
                 "подобранные **семантическим поиском** по двум стратегиям chunking:\n"
                 "- **fixed** — окна фиксированной длины;\n"
                 "- **structural** — по заголовкам Markdown.\n\n"
-                "Сначала ответь на вопрос пользователя **строго по отрывкам**. "
-                "Затем добавь блок **«Сравнение chunking»** (2–5 предложений): какой набор отрывков полезнее для этого вопроса.\n\n"
             )
             body = "\n".join(
                 [
@@ -199,7 +238,9 @@ class AgentRagMixin:
                     self._format_rag_hits_block("structural", hs),
                 ]
             )
-            return Message(role="system", content=body), meta_out
+            meta_out["rag_day24_appendix_autogen"] = True
+            appendix_hits = merge_hits_for_appendix(hf, hs)
+            return Message(role="system", content=body), meta_out, appendix_hits
 
         strat = "fixed" if mode == "fixed" else "structural"
         m, matrix = load_matrix_for_strategy(idx, strat)
@@ -218,6 +259,17 @@ class AgentRagMixin:
                 idx, strat, user_content, h, max_total=kw_ctx_cap
             )
         meta_out[f"rag_hits_{strat}"] = _shrink(h)
+        meta_out["rag_day24_max_score"] = round(max_hit_score(h), 4)
+
+        if insufficient_evidence(h, ans_min):
+            meta_out["rag_day24_insufficient"] = True
+            msg = refusal_system_message(
+                best_score=max_hit_score(h),
+                threshold=ans_min,
+                hit_count=len(h),
+            )
+            return Message(role="system", content=msg), meta_out, None
+
         mq_note = (
             (
                 f"Запрос разбит на **{len(subqs)}** подвопросов; ниже до **{len(h)}** объединённых отрывков "
@@ -233,4 +285,5 @@ class AgentRagMixin:
             )
         intro = _rag_grounding + day23_note + mq_note
         body = intro + self._format_rag_hits_block(strat, h)
-        return Message(role="system", content=body), meta_out
+        meta_out["rag_day24_appendix_autogen"] = True
+        return Message(role="system", content=body), meta_out, h

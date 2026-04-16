@@ -18,6 +18,7 @@ from ..agent_constants import (
 )
 from ..mcp_tool_parse import _merge_provider_meta, _parse_mcp_tool_call
 from ..providers import Message, StreamResult
+from ..rag.day24 import build_day24_appendix_markdown, splice_day24_appendix_before_compare
 
 
 class AgentStreamingMixin:
@@ -49,9 +50,13 @@ class AgentStreamingMixin:
         rag_cfg: dict = {"enabled": True, "strategy": rag_strategy, "top_k": top_k}
         if index_path:
             rag_cfg["index_path"] = index_path
-        rag_sys, rag_meta = await self._rag_context_message(user_text, rag_cfg)
+        rag_sys, rag_meta, rag_apx = await self._rag_context_message(user_text, rag_cfg)
         with_msgs = [rag_sys, user_msg] if rag_sys is not None else [user_msg]
         with_rag = await _collect(with_msgs)
+        if rag_apx:
+            apx_md = build_day24_appendix_markdown(rag_apx)
+            if apx_md:
+                with_rag = f"{with_rag.rstrip()}{apx_md}"
         return {
             "without_rag": without_rag,
             "with_rag": with_rag,
@@ -102,12 +107,20 @@ class AgentStreamingMixin:
             "top_k_fetch": max(top_k * 3, 24),
         }
 
-        sys_b, meta_b = await self._rag_context_message(user_text, baseline_cfg)
-        sys_e, meta_e = await self._rag_context_message(user_text, enhanced_cfg)
+        sys_b, meta_b, apx_b = await self._rag_context_message(user_text, baseline_cfg)
+        sys_e, meta_e, apx_e = await self._rag_context_message(user_text, enhanced_cfg)
         msgs_b = [sys_b, user_msg] if sys_b is not None else [user_msg]
         msgs_e = [sys_e, user_msg] if sys_e is not None else [user_msg]
         ans_b = await _collect(msgs_b)
         ans_e = await _collect(msgs_e)
+        if apx_b:
+            mdb = build_day24_appendix_markdown(apx_b)
+            if mdb:
+                ans_b = f"{ans_b.rstrip()}{mdb}"
+        if apx_e:
+            mde = build_day24_appendix_markdown(apx_e)
+            if mde:
+                ans_e = f"{ans_e.rstrip()}{mde}"
         return {
             "with_rag_baseline": ans_b,
             "with_rag_enhanced": ans_e,
@@ -245,9 +258,15 @@ class AgentStreamingMixin:
         if mcp_instr is not None:
             request_messages = [*request_messages[:-1], mcp_instr, request_messages[-1]]
 
-        rag_msg, rag_meta = await self._rag_context_message(user_msg.content, rag)
+        rag_msg, rag_meta, rag_appendix_hits = await self._rag_context_message(
+            user_msg.content, rag
+        )
         if rag_msg is not None:
             request_messages = [*request_messages[:-1], rag_msg, request_messages[-1]]
+
+        compare_rag_buffer = (rag_meta or {}).get("rag_mode") == "compare" and bool(
+            rag_appendix_hits
+        )
 
         assistant_chunks: list[str] = []
         provider_meta: dict | None = None
@@ -346,7 +365,8 @@ class AgentStreamingMixin:
             ):
                 if result.text:
                     assistant_chunks.append(result.text)
-                    yield result
+                    if not compare_rag_buffer:
+                        yield result
                     if (
                         self._normalize_task_state(state.get("task_state", {})).get("status")
                         == "paused"
@@ -357,6 +377,21 @@ class AgentStreamingMixin:
                     provider_meta = _merge_provider_meta(provider_meta, result.meta)
 
             assistant_text = "".join(assistant_chunks)
+
+        if rag_appendix_hits:
+            apx_md = build_day24_appendix_markdown(rag_appendix_hits)
+            if apx_md:
+                base = (assistant_text or "").rstrip()
+                if (rag_meta or {}).get("rag_mode") == "compare":
+                    assistant_text = splice_day24_appendix_before_compare(base, apx_md)
+                else:
+                    assistant_text = f"{base}{apx_md}"
+                if compare_rag_buffer and bridge is None:
+                    yield StreamResult(text=assistant_text)
+                elif not compare_rag_buffer:
+                    yield StreamResult(text=apx_md)
+                else:
+                    yield StreamResult(text=apx_md)
 
         if not (assistant_text or "").strip():
             assistant_text = (
