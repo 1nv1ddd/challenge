@@ -1371,6 +1371,26 @@ function buildMetaHTML(meta) {
     : '';
   const planOff = meta.task_workflow_enabled === false ? ' · <span class="meta-val">план выкл</span>' : '';
   const taskInfo = `<div class="meta-item">Task: <span class="meta-val">${meta.task_phase || 'planning'}</span>${meta.task_is_paused ? ' (paused)' : ''}${taskAllowed}${taskGuard}${planOff}</div>`;
+  let taskMemoryInfo = '';
+  if (meta.task_memory && typeof meta.task_memory === 'object') {
+    const tm = meta.task_memory;
+    const rows = [];
+    if (tm.goal) rows.push(`<div class="meta-detail"><strong>Цель:</strong> ${escapeHtml(String(tm.goal))}</div>`);
+    if (tm.scope) rows.push(`<div class="meta-detail"><strong>Scope:</strong> ${escapeHtml(String(tm.scope))}</div>`);
+    if (tm.constraints) rows.push(`<div class="meta-detail"><strong>Ограничения:</strong> ${escapeHtml(String(tm.constraints))}</div>`);
+    if (tm.deadline) rows.push(`<div class="meta-detail"><strong>Дедлайн:</strong> ${escapeHtml(String(tm.deadline))}</div>`);
+    const terms = tm.terms && typeof tm.terms === 'object' ? tm.terms : {};
+    const termsEntries = Object.entries(terms).slice(0, 12);
+    if (termsEntries.length) {
+      const items = termsEntries.map(([k, v]) => `<li><code>${escapeHtml(String(k))}</code>: ${escapeHtml(String(v))}</li>`).join('');
+      rows.push(`<div class="meta-detail"><strong>Термины/уточнения (${termsEntries.length}):</strong><ul style="margin:4px 0 0 18px; padding:0;">${items}</ul></div>`);
+    }
+    if (rows.length) {
+      taskMemoryInfo = `<div class="meta-item meta-item--block"><div>Память задачи</div>${rows.join('')}</div>`;
+    } else {
+      taskMemoryInfo = `<div class="meta-item meta-item--block"><div>Память задачи</div><div class="meta-detail">— пусто. Задайте цель сообщением вида «Цель: …», ограничение «Ограничения: …», или термин «ключ: значение».</div></div>`;
+    }
+  }
   const autoMemoryInfo = (meta.memory_auto_saved_count && meta.memory_auto_saved_count > 0)
     ? `<div class="meta-item meta-item--block"><div>Авто-сохранено в long_term: <span class="meta-val">${meta.memory_auto_saved_count}</span></div><div class="meta-detail">${(meta.memory_auto_saved_keys || []).map(k => escapeHtml(String(k))).join(', ')}</div></div>`
     : '';
@@ -1399,6 +1419,7 @@ function buildMetaHTML(meta) {
       ${profileInfo}
       ${invInfo}
       ${taskInfo}
+      ${taskMemoryInfo}
       ${autoWorkingInfo}
       ${autoMemoryInfo}
       ${summaryInfo}
@@ -2053,13 +2074,13 @@ async function send() {
           const o = {
             enabled: true,
             strategy: m === 'compare' ? 'compare' : m,
-            top_k: 14,
+            top_k: 6,
           };
           if (ragDay23Check && ragDay23Check.checked) {
             o.query_rewrite = true;
             o.min_similarity = 0.28;
             o.rerank = 'lexical';
-            o.top_k_fetch = 28;
+            o.top_k_fetch = 18;
           }
           return o;
         })(),

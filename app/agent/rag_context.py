@@ -1,11 +1,25 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 from ..providers import Message
 
 _DEFAULT_MIN_SIM = float(os.getenv("RAG_MIN_SIMILARITY", "0") or "0")
+
+_META_KV_RE = re.compile(r"^[A-Za-zА-Яа-я_][\w \-]{0,40}\s*:\s*\S")
+
+
+def _is_meta_message(text: str) -> bool:
+    """Установочная реплика (факт/ограничение/термин), а не вопрос к RAG."""
+    t = (text or "").strip()
+    if not t or "?" in t:
+        return False
+    lines = [ln.strip() for ln in t.splitlines() if ln.strip()]
+    if not lines:
+        return False
+    return all(_META_KV_RE.match(ln) for ln in lines)
 
 
 class AgentRagMixin:
@@ -29,14 +43,28 @@ class AgentRagMixin:
     ) -> tuple[Message | None, dict, list[dict] | None]:
         if not rag_cfg or not rag_cfg.get("enabled"):
             return None, {}, None
+        if _is_meta_message(user_content):
+            ack = (
+                "Это установочная реплика пользователя (факт/ограничение/термин), а не вопрос.\n"
+                "Отвечай коротко: одной строкой подтверди, что записал, перечислив ключи "
+                "(например: «Записал: term_sla, constraints»). Не раскрывай тему, "
+                "не добавляй `## Источники` / `## Цитаты`, не давай общих рекомендаций."
+            )
+            return (
+                Message(role="system", content=ack),
+                {"rag_skipped": "meta_message"},
+                None,
+            )
         from ..rag import pipeline as rag_pipeline
         from ..rag.day24 import (
             answer_min_score_from_cfg,
             combined_insufficient_evidence,
+            filter_hits_by_anchors,
             insufficient_evidence,
             max_hit_score,
             merge_hits_for_appendix,
             refusal_system_message,
+            unmatched_anchors,
         )
         from ..rag.embeddings import embed_texts_async
         from ..rag.post_retrieval import postprocess_hits, rag_enhancements_enabled
@@ -158,15 +186,21 @@ class AgentRagMixin:
 
         def _refusal_for(hits_list: list[list[dict]]) -> tuple[Message, dict] | None:
             flat = [x for sub in hits_list for x in (sub or [])]
-            if not combined_insufficient_evidence(hits_list, ans_min):
+            if not combined_insufficient_evidence(
+                hits_list, ans_min, user_text=user_content
+            ):
                 return None
             best = max((max_hit_score(h) for h in hits_list if h), default=0.0)
+            missing = unmatched_anchors(user_content, flat)
             meta_out["rag_day24_insufficient"] = True
             meta_out["rag_day24_max_score"] = round(best, 4)
+            if missing:
+                meta_out["rag_day24_missing_anchors"] = missing
             msg = refusal_system_message(
                 best_score=best,
                 threshold=ans_min,
                 hit_count=len(flat),
+                missing_anchors=missing,
             )
             return Message(role="system", content=msg), meta_out
 
@@ -239,7 +273,9 @@ class AgentRagMixin:
                 ]
             )
             meta_out["rag_day24_appendix_autogen"] = True
-            appendix_hits = merge_hits_for_appendix(hf, hs)
+            appendix_hits = filter_hits_by_anchors(
+                merge_hits_for_appendix(hf, hs), user_content
+            )
             return Message(role="system", content=body), meta_out, appendix_hits
 
         strat = "fixed" if mode == "fixed" else "structural"
@@ -261,12 +297,16 @@ class AgentRagMixin:
         meta_out[f"rag_hits_{strat}"] = _shrink(h)
         meta_out["rag_day24_max_score"] = round(max_hit_score(h), 4)
 
-        if insufficient_evidence(h, ans_min):
+        if insufficient_evidence(h, ans_min, user_text=user_content):
+            missing = unmatched_anchors(user_content, h)
             meta_out["rag_day24_insufficient"] = True
+            if missing:
+                meta_out["rag_day24_missing_anchors"] = missing
             msg = refusal_system_message(
                 best_score=max_hit_score(h),
                 threshold=ans_min,
                 hit_count=len(h),
+                missing_anchors=missing,
             )
             return Message(role="system", content=msg), meta_out, None
 
@@ -286,4 +326,5 @@ class AgentRagMixin:
         intro = _rag_grounding + day23_note + mq_note
         body = intro + self._format_rag_hits_block(strat, h)
         meta_out["rag_day24_appendix_autogen"] = True
-        return Message(role="system", content=body), meta_out, h
+        appendix_hits = filter_hits_by_anchors(h, user_content)
+        return Message(role="system", content=body), meta_out, appendix_hits

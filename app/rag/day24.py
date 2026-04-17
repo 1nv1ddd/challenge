@@ -10,6 +10,61 @@ from .post_retrieval import is_keyword_boosted_hit
 
 _DEFAULT_ANSWER_MIN = float(os.getenv("RAG_ANSWER_MIN_SCORE", "0.25") or "0.25")
 
+_EXPLICIT_ANCHOR_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(r"(?i)PL-\d{3}-RET"),
+    re.compile(r"(?i)NODE-Q-\d+"),
+)
+
+
+def explicit_anchors(user_text: str) -> list[str]:
+    """Коды вида PL-###-RET / NODE-Q-###, явно упомянутые в запросе."""
+    out: list[str] = []
+    for pat in _EXPLICIT_ANCHOR_PATTERNS:
+        for m in pat.finditer(user_text or ""):
+            val = m.group(0).upper()
+            if val not in out:
+                out.append(val)
+    return out
+
+
+def filter_hits_by_anchors(
+    hits: list[dict[str, Any]], user_text: str
+) -> list[dict[str, Any]]:
+    """
+    Для показа пользователю оставить только чанки, в тексте которых есть хотя бы один якорь
+    из запроса. Если якорей в запросе нет — возвращаем hits без изменений. Если ни один чанк
+    не совпал — тоже возвращаем исходный список (fallback, чтобы не выдать пустой appendix).
+    """
+    anchors = explicit_anchors(user_text)
+    if not anchors or not hits:
+        return list(hits or [])
+    lowered = [a.lower() for a in anchors]
+    keep = [
+        h
+        for h in hits
+        if any(a in (h.get("text") or "").lower() for a in lowered)
+    ]
+    return keep or list(hits)
+
+
+def unmatched_anchors(user_text: str, hits: list[dict[str, Any]]) -> list[str]:
+    """
+    Якоря из запроса, которых буквально нет ни в одном чанке.
+    Эмбеддинги PL-###-RET между собой очень близки, поэтому высокий score без exact-match
+    — не доказательство. Если юзер спросил про несуществующий код, hits всё равно будут
+    «похожи» на другие PL-коды, но ответ по корпусу невозможен.
+    """
+    anchors = explicit_anchors(user_text)
+    if not anchors:
+        return []
+    texts_lower = [(h.get("text") or "").lower() for h in hits or []]
+    missing: list[str] = []
+    for a in anchors:
+        al = a.lower()
+        if not any(al in t for t in texts_lower):
+            missing.append(a)
+    return missing
+
 
 def answer_min_score_from_cfg(rag_cfg: dict[str, Any] | None) -> float:
     if not rag_cfg:
@@ -29,12 +84,19 @@ def max_hit_score(hits: list[dict[str, Any]]) -> float:
     return max(float(h["score"]) for h in hits)
 
 
-def insufficient_evidence(hits: list[dict[str, Any]], min_score: float) -> bool:
+def insufficient_evidence(
+    hits: list[dict[str, Any]],
+    min_score: float,
+    *,
+    user_text: str = "",
+) -> bool:
     """
-    True — не отвечать по корпусу уверенно: нет чанков или слабая семантика и нет keyword-буста.
-    Keyword-хиты считаем достаточным основанием (точное вхождение якоря).
+    True — не отвечать по корпусу уверенно: нет чанков, слабая семантика без keyword-буста,
+    либо в запросе есть явные якоря (PL-###-RET / NODE-Q-###), которых нет ни в одном чанке.
     """
     if not hits:
+        return True
+    if user_text and unmatched_anchors(user_text, hits):
         return True
     if any(is_keyword_boosted_hit(h) for h in hits):
         return False
@@ -46,16 +108,28 @@ def refusal_system_message(
     best_score: float,
     threshold: float,
     hit_count: int,
+    missing_anchors: list[str] | None = None,
 ) -> str:
+    ma = list(missing_anchors or [])
+    anchor_line = ""
+    anchor_instr = ""
+    if ma:
+        joined = ", ".join(f"`{a}`" for a in ma)
+        anchor_line = f" Якоря без совпадений в найденных отрывках: {joined}."
+        anchor_instr = (
+            f"В первой же фразе **перечисли** эти якоря как отсутствующие в корпусе: {joined}. "
+        )
     return (
         "[RAG · День 24] Контекст для уверенного ответа **недостаточен** "
         f"(отрывков после отбора: {hit_count}; лучший score среди семантических: {best_score:.4f}; "
-        f"порог уверенности: {threshold:.4f}). Якорных exact-match чанков нет.\n\n"
+        f"порог уверенности: {threshold:.4f}). Якорных exact-match чанков нет."
+        f"{anchor_line}\n\n"
         "Ответь пользователю **строго** в markdown в такой структуре (заголовки как ниже):\n\n"
         "## Ответ\n"
         "Обязательно начни с явного **«Не знаю»** (например: «Не знаю: …»). "
+        f"{anchor_instr}"
         "По корпусу **нельзя** дать надёжный ответ при текущем запросе "
-        "(релевантность ниже порога или нет подходящих фрагментов). "
+        "(релевантность ниже порога или запрошенный код/раздел отсутствует в корпусе). "
         "Попроси **уточнить** запрос: конкретный код PL-* / NODE-Q-*, раздел справочника, имя файла или цитату.\n"
         "**Запрещено** придумывать факты из «головы».\n\n"
         "## Источники\n"
@@ -139,9 +213,13 @@ def build_day24_appendix_markdown(hits: list[dict[str, Any]], *, quote_max_chars
 def combined_insufficient_evidence(
     hit_lists: list[list[dict[str, Any]]],
     min_score: float,
+    *,
+    user_text: str = "",
 ) -> bool:
     """Compare: отказ только если **оба** набора отрывков недостаточны."""
     parts = [h for h in hit_lists if h is not None]
     if not parts:
         return True
-    return all(insufficient_evidence(h, min_score) for h in parts)
+    return all(
+        insufficient_evidence(h, min_score, user_text=user_text) for h in parts
+    )

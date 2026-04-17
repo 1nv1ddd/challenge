@@ -454,6 +454,31 @@ class AgentStreamingMixin:
 
         working_memory = self._normalize_kv_dict(state.get("working_memory", {}), max_items=40)
         long_term = self._normalize_kv_dict(self.global_memory.get("long_term", {}), max_items=120)
+        facts = state.get("facts", {}) or {}
+        if not isinstance(facts, dict):
+            facts = {}
+        _reserved_fact_keys = {
+            "goal",
+            "constraints",
+            "scope",
+            "deadline",
+            "preferences",
+            "decisions",
+            "agreements",
+        }
+        task_memory = {
+            "goal": (working_memory.get("task_goal") or facts.get("goal") or "").strip(),
+            "constraints": (
+                working_memory.get("constraints") or facts.get("constraints") or ""
+            ).strip(),
+            "scope": (working_memory.get("task_scope") or facts.get("scope") or "").strip(),
+            "deadline": (working_memory.get("deadline") or facts.get("deadline") or "").strip(),
+            "terms": {
+                k: v
+                for k, v in facts.items()
+                if k not in _reserved_fact_keys and str(v).strip()
+            },
+        }
 
         enriched_meta = {
             "time_ms": int((provider_meta or {}).get("time_ms", 0)),
@@ -509,5 +534,6 @@ class AgentStreamingMixin:
             "workflow_guard_applied": bool(context_meta.get("workflow_guard_applied", False)),
             "mcp_tool": mcp_tool_used,
             "rag": rag_meta if rag_meta else None,
+            "task_memory": task_memory,
         }
         yield StreamResult(meta=enriched_meta)
