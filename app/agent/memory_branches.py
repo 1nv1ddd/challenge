@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 
+from ..agent_constants import WINDOW_SIZE_MESSAGES
 from ..providers import Message
 
 
