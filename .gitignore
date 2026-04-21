@@ -9,3 +9,4 @@ data/tech_radar_outputs/*
 !data/tech_radar_outputs/.gitkeep
 data/rag_index/
 CLAUDE.md
+.claude/

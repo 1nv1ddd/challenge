@@ -1050,23 +1050,44 @@ function saveChats() { localStorage.setItem('aichat_chats', JSON.stringify(chats
 function getChat(id) { return chats.find(c => c.id === id); }
 
 async function init() {
+  let allModels = {};
   try {
     const resp = await fetch('/api/models');
-    const allModels = await resp.json();
-    const providers = Object.keys(allModels);
-    if (providers.length) {
-      providerName = providers[0];
-      modelList = allModels[providerName] || [];
-    }
-  } catch { modelList = []; }
+    allModels = await resp.json();
+  } catch { allModels = {}; }
 
   await loadProfiles();
 
-  modelSel.innerHTML = modelList.map(m =>
-    `<option value="${m.id}">${m.label}</option>`
-  ).join('');
+  const PROVIDER_LABELS = { routerai: 'Облачные модели', ollama: 'Локальные модели' };
+  const ORDER = ['routerai', 'ollama'];
+  const htmlGroups = [];
+  for (const pname of ORDER) {
+    const models = allModels[pname] || [];
+    if (!models.length) continue;
+    const opts = models.map(m =>
+      `<option value="${m.id}" data-provider="${pname}">${m.label}</option>`
+    ).join('');
+    htmlGroups.push(`<optgroup label="${PROVIDER_LABELS[pname] || pname}">${opts}</optgroup>`);
+  }
+  for (const pname of Object.keys(allModels)) {
+    if (ORDER.includes(pname)) continue;
+    const models = allModels[pname] || [];
+    if (!models.length) continue;
+    const opts = models.map(m =>
+      `<option value="${m.id}" data-provider="${pname}">${m.label}</option>`
+    ).join('');
+    htmlGroups.push(`<optgroup label="${pname}">${opts}</optgroup>`);
+  }
+  modelSel.innerHTML = htmlGroups.join('');
+  if (modelSel.selectedOptions[0]) {
+    providerName = modelSel.selectedOptions[0].dataset.provider || '';
+  }
 
-  modelSel.addEventListener('change', syncChatModel);
+  modelSel.addEventListener('change', () => {
+    const opt = modelSel.selectedOptions[0];
+    if (opt) providerName = opt.dataset.provider || providerName;
+    syncChatModel();
+  });
   profileSel.addEventListener('change', syncChatProfile);
   const RAG_LS = 'aichat_rag_mode';
   ragModeSel.value = localStorage.getItem(RAG_LS) || 'off';

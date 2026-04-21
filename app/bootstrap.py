@@ -8,7 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from .agent import SimpleChatAgent
-from .providers import AIProvider, RouterAIProvider
+from .providers import AIProvider, OllamaProvider, RouterAIProvider
 
 load_dotenv()
 
@@ -20,6 +20,8 @@ def _build_providers() -> dict[str, AIProvider]:
     out: dict[str, AIProvider] = {}
     if key := os.getenv("ROUTERAI_API_KEY"):
         out["routerai"] = RouterAIProvider(key)
+    ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+    out["ollama"] = OllamaProvider(ollama_url)
     return out
 
 

@@ -16,6 +16,11 @@ router = APIRouter()
 
 @router.get("/api/models")
 async def list_models():
+    from ..providers import OllamaProvider
+
+    ollama = providers.get("ollama")
+    if isinstance(ollama, OllamaProvider):
+        await ollama.refresh_models()
     return agent.list_models()
 
 
