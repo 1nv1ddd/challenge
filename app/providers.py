@@ -180,3 +180,108 @@ class RouterAIProvider(AIProvider):
             "completion_tokens": completion_tokens,
             "total_tokens": total_tokens,
         })
+
+
+def _label_for_ollama_model(model_id: str) -> str:
+    """huggingface.co/bartowski/Vikhr-Nemo-12B-Instruct-R-21-09-24-GGUF:Q4_K_M
+    → 'Vikhr-Nemo-12B-Instruct (Q4_K_M) — Local'."""
+    tag = ""
+    base = model_id
+    if ":" in model_id:
+        base, tag = model_id.split(":", 1)
+    short = base.rsplit("/", 1)[-1]
+    for suf in ("-GGUF", "-gguf"):
+        if short.endswith(suf):
+            short = short[: -len(suf)]
+    short = short.replace("-R-21-09-24", "")
+    qpart = f" ({tag})" if tag else ""
+    return f"{short}{qpart} — Local"
+
+
+class OllamaProvider(AIProvider):
+    """Локальные модели через Ollama (OpenAI-совместимый эндпоинт /v1)."""
+
+    name = "ollama"
+
+    def __init__(self, base_url: str = "http://localhost:11434"):
+        self.base_url = base_url.rstrip("/")
+        self.models: list[dict] = []
+
+    async def refresh_models(self) -> list[dict]:
+        try:
+            async with httpx.AsyncClient(timeout=3) as client:
+                r = await client.get(f"{self.base_url}/api/tags")
+                r.raise_for_status()
+                data = r.json()
+        except (httpx.HTTPError, json.JSONDecodeError):
+            self.models = []
+            return self.models
+        items = data.get("models") or []
+        self.models = [
+            {"id": m["name"], "label": _label_for_ollama_model(m["name"])}
+            for m in items
+            if isinstance(m, dict) and m.get("name")
+        ]
+        return self.models
+
+    async def stream_chat(
+        self, messages: list[Message], model: str, temperature: float = 0.7
+    ) -> AsyncIterator[StreamResult]:
+        url = f"{self.base_url}/v1/chat/completions"
+        body = {
+            "model": model,
+            "messages": [{"role": m.role, "content": m.content} for m in messages],
+            "temperature": temperature,
+            "stream": True,
+        }
+        t_start = time.monotonic()
+        usage: dict = {}
+        any_text = False
+
+        async with httpx.AsyncClient(timeout=600) as client:
+            try:
+                async with client.stream("POST", url, json=body) as resp:
+                    if resp.status_code >= 400:
+                        detail = (await resp.aread()).decode("utf-8", "ignore")[:800]
+                        yield StreamResult(
+                            text=f"Ошибка Ollama (HTTP {resp.status_code}): {detail}"
+                        )
+                        return
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data: "):
+                            continue
+                        data = line[6:]
+                        if data.strip() == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                        except json.JSONDecodeError:
+                            continue
+                        if u := chunk.get("usage"):
+                            usage = u
+                        if text := _stream_text_from_chunk(chunk):
+                            any_text = True
+                            yield StreamResult(text=text)
+            except httpx.HTTPError as e:
+                yield StreamResult(
+                    text=(
+                        f"Ollama недоступна по {url}: {e}. "
+                        "Убедитесь, что `ollama serve` запущен и модель скачана."
+                    ),
+                )
+                return
+
+        elapsed_ms = round((time.monotonic() - t_start) * 1000)
+        prompt_tokens = int(usage.get("prompt_tokens", 0))
+        completion_tokens = int(usage.get("completion_tokens", 0))
+        total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens))
+
+        yield StreamResult(meta={
+            "time_ms": elapsed_ms,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+            "local": True,
+        })
+        if not any_text:
+            yield StreamResult(text="Модель не вернула текст.")
