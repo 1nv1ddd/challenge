@@ -1261,6 +1261,10 @@ function selectChat(id) {
   }
 
   modelSel.value = chat.model;
+  if (modelSel.selectedOptions[0]) {
+    providerName = modelSel.selectedOptions[0].dataset.provider || providerName;
+  }
+  if (chat.provider && chat.provider !== providerName) providerName = chat.provider;
   profileSel.value = chat.profileId;
   fillProfileEditor(chat.profileId);
   contextStrategy.value = chat.contextStrategy;
@@ -2080,7 +2084,7 @@ async function send() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        provider: providerName,
+        provider: chat.provider || providerName,
         model: chat.model,
         conversation_id: chat.id,
         messages: apiMessages,
