@@ -35,7 +35,7 @@ class AgentStreamingMixin:
     ) -> dict:
         """День 22: вопрос → два полных ответа LLM (без RAG и с подмешанным контекстом из индекса)."""
         provider = self._validate_provider(provider_name)
-        self._validate_model(provider, provider_name, model)
+        await self._validate_model(provider, provider_name, model)
         t = self._normalize_temperature(temperature)
         user_msg = Message(role="user", content=user_text)
 
@@ -77,7 +77,7 @@ class AgentStreamingMixin:
     ) -> dict:
         """День 23: два ответа с RAG — базовый пайплайн и с фильтром/реранком/rewrite."""
         provider = self._validate_provider(provider_name)
-        self._validate_model(provider, provider_name, model)
+        await self._validate_model(provider, provider_name, model)
         t = self._normalize_temperature(temperature)
         user_msg = Message(role="user", content=user_text)
 
@@ -143,7 +143,7 @@ class AgentStreamingMixin:
         task_workflow: bool | None = None,
     ) -> AsyncIterator[StreamResult]:
         provider = self._validate_provider(provider_name)
-        self._validate_model(provider, provider_name, model)
+        await self._validate_model(provider, provider_name, model)
         active_profile_id, profile = self._resolve_profile(profile_id)
         strategy = context_strategy if context_strategy in ALLOWED_STRATEGIES else "sliding"
         normalized_temperature = self._normalize_temperature(temperature)
