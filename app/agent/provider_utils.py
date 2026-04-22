@@ -12,8 +12,11 @@ class AgentProviderUtilsMixin:
         return self.providers[provider_name]
 
     @staticmethod
-    def _validate_model(provider: AIProvider, provider_name: str, model: str) -> None:
+    async def _validate_model(provider: AIProvider, provider_name: str, model: str) -> None:
         model_ids = [m["id"] for m in provider.models]
+        if model not in model_ids and hasattr(provider, "refresh_models"):
+            await provider.refresh_models()
+            model_ids = [m["id"] for m in provider.models]
         if model not in model_ids:
             raise ValueError(f"Model '{model}' not available for {provider_name}")
 
