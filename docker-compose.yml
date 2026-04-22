@@ -3,9 +3,7 @@ services:
     build: .
     env_file: .env
     environment:
-      - OLLAMA_BASE_URL=http://host.docker.internal:11434
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - OLLAMA_BASE_URL=http://172.28.0.1:11434
     restart: unless-stopped
     volumes:
       - ./data:/app/data
