@@ -182,6 +182,23 @@ class RouterAIProvider(AIProvider):
         })
 
 
+_EMBEDDING_MODEL_PATTERNS = (
+    "bge-",
+    "nomic-embed",
+    "snowflake-arctic-embed",
+    "-embed",
+    "embedding",
+    "e5-",
+    "gte-",
+    "mxbai-embed",
+)
+
+
+def _is_embedding_model(model_id: str) -> bool:
+    mid = model_id.rsplit("/", 1)[-1].lower()
+    return any(p in mid for p in _EMBEDDING_MODEL_PATTERNS)
+
+
 def _label_for_ollama_model(model_id: str) -> str:
     """huggingface.co/bartowski/Vikhr-Nemo-12B-Instruct-R-21-09-24-GGUF:Q4_K_M
     → 'Vikhr-Nemo-12B-Instruct (Q4_K_M) — Local'."""
@@ -220,7 +237,7 @@ class OllamaProvider(AIProvider):
         self.models = [
             {"id": m["name"], "label": _label_for_ollama_model(m["name"])}
             for m in items
-            if isinstance(m, dict) and m.get("name")
+            if isinstance(m, dict) and m.get("name") and not _is_embedding_model(m["name"])
         ]
         return self.models
 
