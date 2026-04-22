@@ -4,6 +4,9 @@ services:
     env_file: .env
     environment:
       - OLLAMA_BASE_URL=http://172.28.0.1:11434
+      - RAG_EMBEDDINGS_URL=http://172.28.0.1:11434/v1/embeddings
+      - RAG_EMBEDDING_MODEL=bge-m3
+      - RAG_AUTO_BUILD=0
     restart: unless-stopped
     volumes:
       - ./data:/app/data
