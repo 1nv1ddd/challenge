@@ -99,9 +99,15 @@ def build_rag_index(
             "Нет файлов корпуса: добавьте md/txt в data/rag_corpus/",
         )
 
-    api_key = (os.getenv("ROUTERAI_API_KEY") or "").strip()
-    if not api_key:
-        raise ValueError("ROUTERAI_API_KEY не задан — эмбеддинги недоступны")
+    embed_url = os.getenv("RAG_EMBEDDINGS_URL", "")
+    if "routerai.ru" in embed_url or not embed_url:
+        api_key = (os.getenv("ROUTERAI_API_KEY") or "").strip()
+        if not api_key:
+            raise ValueError(
+                "ROUTERAI_API_KEY не задан — эмбеддинги через RouterAI недоступны. "
+                "Для локальной сборки задайте RAG_EMBEDDINGS_URL=http://localhost:11434/v1/embeddings "
+                "и RAG_EMBEDDING_MODEL=bge-m3 (нужен `ollama pull bge-m3`)."
+            )
 
     embed_model = os.getenv("RAG_EMBEDDING_MODEL", DEFAULT_EMBED_MODEL)
 

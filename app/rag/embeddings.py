@@ -1,4 +1,10 @@
-"""Эмбеддинги через OpenAI-совместимый POST /v1/embeddings (RouterAI)."""
+"""Эмбеддинги через OpenAI-совместимый POST /v1/embeddings.
+
+По умолчанию бьём в RouterAI (облако), но через env-переменные
+`RAG_EMBEDDINGS_URL` / `RAG_EMBEDDING_MODEL` / `RAG_EMBEDDINGS_API_KEY`
+можно переключиться на любой OpenAI-совместимый эндпоинт — в т.ч.
+локальную Ollama (`http://localhost:11434/v1/embeddings`, без ключа).
+"""
 
 from __future__ import annotations
 
@@ -9,6 +15,15 @@ import httpx
 
 DEFAULT_EMBED_URL = "https://routerai.ru/api/v1/embeddings"
 DEFAULT_EMBED_MODEL = "openai/text-embedding-3-small"
+
+
+def _resolve_auth(api_key: str | None, url: str) -> str:
+    explicit = api_key or os.getenv("RAG_EMBEDDINGS_API_KEY") or ""
+    if explicit.strip():
+        return explicit.strip()
+    if "routerai.ru" in url:
+        return (os.getenv("ROUTERAI_API_KEY") or "").strip()
+    return ""
 
 
 def _parse_embeddings_payload(data: dict[str, Any]) -> list[list[float]]:
@@ -29,6 +44,16 @@ def _parse_embeddings_payload(data: dict[str, Any]) -> list[list[float]]:
     return out
 
 
+def _headers(url: str, api_key: str | None) -> dict[str, str]:
+    h = {"Content-Type": "application/json"}
+    key = _resolve_auth(api_key, url)
+    if key:
+        h["Authorization"] = f"Bearer {key}"
+    elif "routerai.ru" in url:
+        raise ValueError("Нужен ROUTERAI_API_KEY для RouterAI-эмбеддингов")
+    return h
+
+
 def embed_texts_sync(
     texts: list[str],
     *,
@@ -38,12 +63,9 @@ def embed_texts_sync(
     batch_size: int = 64,
 ) -> list[list[float]]:
     """Синхронный батчинг (для scripts/build_rag_index)."""
-    key = api_key or os.getenv("ROUTERAI_API_KEY") or ""
-    if not key.strip():
-        raise ValueError("Нужен ROUTERAI_API_KEY для эмбеддингов")
     m = model or os.getenv("RAG_EMBEDDING_MODEL", DEFAULT_EMBED_MODEL)
     u = url or os.getenv("RAG_EMBEDDINGS_URL", DEFAULT_EMBED_URL)
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    headers = _headers(u, api_key)
     all_vec: list[list[float]] = []
     with httpx.Client(timeout=120.0) as client:
         for i in range(0, len(texts), batch_size):
@@ -62,12 +84,9 @@ async def embed_texts_async(
     url: str | None = None,
     batch_size: int = 32,
 ) -> list[list[float]]:
-    key = api_key or os.getenv("ROUTERAI_API_KEY") or ""
-    if not key.strip():
-        raise ValueError("Нужен ROUTERAI_API_KEY для эмбеддингов")
     m = model or os.getenv("RAG_EMBEDDING_MODEL", DEFAULT_EMBED_MODEL)
     u = url or os.getenv("RAG_EMBEDDINGS_URL", DEFAULT_EMBED_URL)
-    headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+    headers = _headers(u, api_key)
     all_vec: list[list[float]] = []
     async with httpx.AsyncClient(timeout=120.0) as client:
         for i in range(0, len(texts), batch_size):
