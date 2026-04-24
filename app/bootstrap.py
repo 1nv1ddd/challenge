@@ -21,7 +21,9 @@ def _build_providers() -> dict[str, AIProvider]:
     if key := os.getenv("ROUTERAI_API_KEY"):
         out["routerai"] = RouterAIProvider(key)
     ollama_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-    out["ollama"] = OllamaProvider(ollama_url)
+    num_ctx = int(os.getenv("OLLAMA_NUM_CTX", "8192"))
+    num_predict = int(os.getenv("OLLAMA_NUM_PREDICT", "1024"))
+    out["ollama"] = OllamaProvider(ollama_url, num_ctx=num_ctx, num_predict=num_predict)
     return out
 
 

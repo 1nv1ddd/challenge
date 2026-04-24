@@ -535,5 +535,8 @@ class AgentStreamingMixin:
             "mcp_tool": mcp_tool_used,
             "rag": rag_meta if rag_meta else None,
             "task_memory": task_memory,
+            "ollama_num_ctx": (provider_meta or {}).get("ollama_num_ctx"),
+            "ollama_num_predict": (provider_meta or {}).get("ollama_num_predict"),
+            "local_model": bool((provider_meta or {}).get("local")),
         }
         yield StreamResult(meta=enriched_meta)
