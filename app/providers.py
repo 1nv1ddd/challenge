@@ -216,12 +216,20 @@ def _label_for_ollama_model(model_id: str) -> str:
 
 
 class OllamaProvider(AIProvider):
-    """Локальные модели через Ollama (OpenAI-совместимый эндпоинт /v1)."""
+    """Локальные модели через Ollama (нативный /api/chat с options)."""
 
     name = "ollama"
 
-    def __init__(self, base_url: str = "http://localhost:11434"):
+    def __init__(
+        self,
+        base_url: str = "http://localhost:11434",
+        *,
+        num_ctx: int = 8192,
+        num_predict: int = 1024,
+    ):
         self.base_url = base_url.rstrip("/")
+        self.num_ctx = num_ctx
+        self.num_predict = num_predict
         self.models: list[dict] = []
 
     async def refresh_models(self) -> list[dict]:
@@ -244,15 +252,20 @@ class OllamaProvider(AIProvider):
     async def stream_chat(
         self, messages: list[Message], model: str, temperature: float = 0.7
     ) -> AsyncIterator[StreamResult]:
-        url = f"{self.base_url}/v1/chat/completions"
+        url = f"{self.base_url}/api/chat"
         body = {
             "model": model,
             "messages": [{"role": m.role, "content": m.content} for m in messages],
-            "temperature": temperature,
             "stream": True,
+            "options": {
+                "temperature": temperature,
+                "num_ctx": self.num_ctx,
+                "num_predict": self.num_predict,
+            },
         }
         t_start = time.monotonic()
-        usage: dict = {}
+        prompt_tokens = 0
+        completion_tokens = 0
         any_text = False
 
         async with httpx.AsyncClient(timeout=600) as client:
@@ -265,20 +278,21 @@ class OllamaProvider(AIProvider):
                         )
                         return
                     async for line in resp.aiter_lines():
-                        if not line.startswith("data: "):
+                        if not line.strip():
                             continue
-                        data = line[6:]
-                        if data.strip() == "[DONE]":
-                            break
                         try:
-                            chunk = json.loads(data)
+                            chunk = json.loads(line)
                         except json.JSONDecodeError:
                             continue
-                        if u := chunk.get("usage"):
-                            usage = u
-                        if text := _stream_text_from_chunk(chunk):
+                        msg = chunk.get("message") or {}
+                        content = msg.get("content")
+                        if isinstance(content, str) and content:
                             any_text = True
-                            yield StreamResult(text=text)
+                            yield StreamResult(text=content)
+                        if chunk.get("done"):
+                            prompt_tokens = int(chunk.get("prompt_eval_count", 0))
+                            completion_tokens = int(chunk.get("eval_count", 0))
+                            break
             except httpx.HTTPError as e:
                 yield StreamResult(
                     text=(
@@ -289,16 +303,14 @@ class OllamaProvider(AIProvider):
                 return
 
         elapsed_ms = round((time.monotonic() - t_start) * 1000)
-        prompt_tokens = int(usage.get("prompt_tokens", 0))
-        completion_tokens = int(usage.get("completion_tokens", 0))
-        total_tokens = int(usage.get("total_tokens", prompt_tokens + completion_tokens))
-
         yield StreamResult(meta={
             "time_ms": elapsed_ms,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
+            "total_tokens": prompt_tokens + completion_tokens,
             "local": True,
+            "ollama_num_ctx": self.num_ctx,
+            "ollama_num_predict": self.num_predict,
         })
         if not any_text:
             yield StreamResult(text="Модель не вернула текст.")
