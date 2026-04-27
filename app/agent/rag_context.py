@@ -43,7 +43,7 @@ class AgentRagMixin:
     ) -> tuple[Message | None, dict, list[dict] | None]:
         if not rag_cfg or not rag_cfg.get("enabled"):
             return None, {}, None
-        if _is_meta_message(user_content):
+        if not rag_cfg.get("help_mode") and _is_meta_message(user_content):
             ack = (
                 "Это установочная реплика пользователя (факт/ограничение/термин), а не вопрос.\n"
                 "Отвечай коротко: одной строкой подтверди, что записал, перечислив ключи "
