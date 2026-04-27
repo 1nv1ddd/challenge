@@ -165,7 +165,7 @@ class AgentStreamingMixin:
             if is_help:
                 incoming[-1] = Message(role="user", content=stripped)
                 rag = force_help_rag_cfg(rag)
-                help_msg = help_system_message()
+                help_msg = await help_system_message()
 
         state = self._get_conversation_state(conversation_id)
         # None = старые клиенты: фазы задачи как раньше. False = только обычный чат (UI «План» выкл).
