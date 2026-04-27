@@ -3,9 +3,10 @@ services:
     build: .
     env_file: .env
     environment:
+      # Локальная Vikhr через SSH reverse-tunnel — опционально, нужна только если
+      # юзер выбирает её в дропдауне моделей. RAG-эмбеддинги от неё больше не зависят.
       - OLLAMA_BASE_URL=http://172.28.0.1:11434
-      - RAG_EMBEDDINGS_URL=http://172.28.0.1:11434/v1/embeddings
-      - RAG_EMBEDDING_MODEL=bge-m3
+      # RAG-эмбеддинги через облачный RouterAI (default). Tunnel up/down не влияет.
       - RAG_AUTO_BUILD=0
     restart: unless-stopped
     volumes:
