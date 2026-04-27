@@ -54,7 +54,14 @@ def help_system_message(branch: str | None = None) -> Message:
 
 
 def force_help_rag_cfg(rag_cfg: dict | None) -> dict:
-    """`/help` всегда форсит RAG=structural top_k=8 даже если в UI выключен."""
+    """`/help` всегда форсит RAG=structural top_k=8 даже если в UI выключен.
+
+    `help_mode=True` нужен, чтобы Day-25 детектор meta-сообщений (`Цель:`,
+    `term: …`) не вырубил retrieval, когда дефолтный /help-промпт начинается
+    с «Расскажи про этот проект: …» — он формально проходит как `key: value`.
+    """
     base = dict(rag_cfg or {})
-    base.update({"enabled": True, "strategy": "structural", "top_k": 8})
+    base.update(
+        {"enabled": True, "strategy": "structural", "top_k": 8, "help_mode": True}
+    )
     return base
