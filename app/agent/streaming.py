@@ -151,6 +151,22 @@ class AgentStreamingMixin:
         if not incoming:
             raise ValueError("No valid messages to send")
 
+        # Day 31: /help — ассистент-разработчик. Форсим RAG и подмешиваем
+        # системный промпт «отвечай только из индекса проекта + текущая git-ветка».
+        from .help_command import (
+            detect_help_command,
+            force_help_rag_cfg,
+            help_system_message,
+        )
+
+        help_msg: Message | None = None
+        if incoming and incoming[-1].role == "user":
+            is_help, stripped = detect_help_command(incoming[-1].content)
+            if is_help:
+                incoming[-1] = Message(role="user", content=stripped)
+                rag = force_help_rag_cfg(rag)
+                help_msg = help_system_message()
+
         state = self._get_conversation_state(conversation_id)
         # None = старые клиенты: фазы задачи как раньше. False = только обычный чат (UI «План» выкл).
         task_workflow_enabled = True if task_workflow is None else bool(task_workflow)
@@ -263,6 +279,8 @@ class AgentStreamingMixin:
         )
         if rag_msg is not None:
             request_messages = [*request_messages[:-1], rag_msg, request_messages[-1]]
+        if help_msg is not None:
+            request_messages = [*request_messages[:-1], help_msg, request_messages[-1]]
 
         compare_rag_buffer = (rag_meta or {}).get("rag_mode") == "compare" and bool(
             rag_appendix_hits

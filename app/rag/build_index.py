@@ -85,6 +85,25 @@ def build_rag_index(
         readme = root / "README.md"
         if readme.is_file():
             extra.append(readme)
+        # Day 31: курированная документация проекта.
+        docs_dir = root / "docs"
+        if docs_dir.is_dir():
+            extra.extend(sorted(p for p in docs_dir.rglob("*.md") if p.is_file()))
+        # API-карту и точку входа — в индекс, чтобы /help мог сослаться на роутеры.
+        for rel in (
+            "app/main.py",
+            "app/payloads.py",
+            "nginx.conf",
+            "nginx-ratelimit.conf",
+            "docker-compose.yml",
+            "CLAUDE.md",
+        ):
+            p = root / rel
+            if p.is_file():
+                extra.append(p)
+        routers_dir = root / "app" / "routers"
+        if routers_dir.is_dir():
+            extra.extend(sorted(p for p in routers_dir.rglob("*.py") if p.is_file()))
         agent_pkg = root / "app" / "agent"
         if agent_pkg.is_dir():
             extra.extend(sorted(p for p in agent_pkg.rglob("*.py") if p.is_file()))
