@@ -187,3 +187,5 @@ your-domain.com {
     reverse_proxy app:8000
 }
 ```
+
+<-claude проверка AI-ревью Day 32 -->
