@@ -189,3 +189,4 @@ your-domain.com {
 ```
 
 <-claude проверка AI-ревью Day 32 -->
+<-claude demo Day 32 -->
