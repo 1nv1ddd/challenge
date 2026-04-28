@@ -36,6 +36,17 @@ jobs:
           path: data/rag_index
           key: rag-index-v1-${{ hashFiles('README.md', 'docs/**', 'CLAUDE.md', 'app/main.py', 'app/payloads.py', 'app/agent/**/*.py', 'app/routers/**/*.py', 'app/rag/**/*.py', 'data/rag_corpus/**', 'nginx*.conf', 'docker-compose.yml') }}
 
+      - name: Verify secret arrived
+        env:
+          ROUTERAI_API_KEY: ${{ secrets.ROUTERAI_API_KEY }}
+        run: |
+          if [ -z "$ROUTERAI_API_KEY" ]; then
+            echo "::error::ROUTERAI_API_KEY пустой. Добавь его в Settings → Secrets and variables → Actions → Repository secrets."
+            exit 1
+          else
+            echo "✓ ROUTERAI_API_KEY получен (length=${#ROUTERAI_API_KEY})"
+          fi
+
       - name: Build RAG index (cache miss)
         if: steps.rag-cache.outputs.cache-hit != 'true'
         env:
