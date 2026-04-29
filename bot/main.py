@@ -26,7 +26,7 @@ import httpx
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandStart
+from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import (
@@ -55,8 +55,13 @@ TOKEN = (os.environ.get("TELEGRAM_BOT_TOKEN") or "").strip()
 ADMIN_IDS: set[int] = {
     int(x) for x in (os.environ.get("ADMIN_TG_IDS") or "").split(",") if x.strip().isdigit()
 }
+ADMIN_PASSWORD = (os.environ.get("ADMIN_PASSWORD") or "12346").strip()
 DEFAULT_PROVIDER = os.environ.get("BOT_PROVIDER", "routerai")
 DEFAULT_MODEL = os.environ.get("BOT_MODEL", "openai/gpt-4o-mini")
+
+# Авторизованные в этой сессии бот-процесса админы. Сбрасывается при рестарте контейнера —
+# повторная аутентификация через `/admin <пароль>` обязательна.
+_authed_admins: set[int] = set()
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 log = logging.getLogger("support-bot")
@@ -70,6 +75,12 @@ _last_exchange: dict[int, dict[str, str]] = {}
 # --- помощники ---
 
 def _is_admin(user_id: int) -> bool:
+    """Авторизованный админ в текущей сессии (вошёл через /admin <пароль>)."""
+    return user_id in _authed_admins
+
+
+def _is_eligible_admin(user_id: int) -> bool:
+    """Tg-id есть в ADMIN_TG_IDS, но это ещё не значит что юзер ввёл пароль."""
     return user_id in ADMIN_IDS
 
 
@@ -152,10 +163,10 @@ class AdminReply(StatesGroup):
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     await message.answer(
-        "👋 Привет! Я AI-ассистент поддержки <b>PolarLine</b>.\n\n"
+        "👋 Привет! Я AI-ассистент поддержки <b>AIChatHub</b>.\n\n"
         "Просто опиши проблему — я отвечу на основе базы знаний (FAQ + handbook). "
         "Если ответ не подойдёт — нажми «❌ Не помогло», и тикет уйдёт оператору.\n\n"
-        "Команды: /myid · /admin (для операторов)"
+        "Команды: /myid · /admin &lt;пароль&gt; (для операторов)"
     )
 
 
@@ -171,10 +182,31 @@ async def cmd_myid(message: Message) -> None:
 # --- /admin ---
 
 @router.message(Command("admin"))
-async def cmd_admin(message: Message) -> None:
-    if not _is_admin(message.from_user.id if message.from_user else 0):
+async def cmd_admin(message: Message, command: CommandObject) -> None:
+    uid = message.from_user.id if message.from_user else 0
+    args = (command.args or "").strip()
+
+    # Не в whitelist'е ADMIN_TG_IDS — никогда не авторизуем, даже с правильным паролем.
+    if not _is_eligible_admin(uid):
         await message.answer("⛔ Эта команда — только для операторов.")
         return
+
+    # Если пароль передан — проверяем и авторизуем (или отклоняем).
+    if args:
+        if args == ADMIN_PASSWORD:
+            _authed_admins.add(uid)
+            await message.answer("🔓 Пароль принят. Доступ открыт до перезапуска бота.")
+        else:
+            await message.answer("❌ Неверный пароль.")
+            return
+
+    # Без пароля — должны быть уже авторизованы.
+    if uid not in _authed_admins:
+        await message.answer(
+            "🔒 Нужна авторизация. Напиши: <code>/admin &lt;пароль&gt;</code>"
+        )
+        return
+
     tickets = await list_open_tickets(20)
     head = f"🎫 <b>Открытые тикеты:</b> {len(tickets)}"
     if not tickets:
@@ -341,8 +373,8 @@ async def cb_escalate(cq: CallbackQuery, bot: Bot) -> None:
         f"📝 Создал тикет <code>{t['id']}</code>. Оператор ответит здесь же — "
         f"уведомление придёт в этом чате."
     )
-    # Уведомляем админов
-    for admin_id in ADMIN_IDS:
+    # Уведомляем только авторизованных админов (вошедших через /admin <пароль>).
+    for admin_id in list(_authed_admins):
         try:
             await bot.send_message(
                 admin_id,
@@ -355,8 +387,43 @@ async def cb_escalate(cq: CallbackQuery, bot: Bot) -> None:
     await cq.answer()
 
 
+_ESCALATE_MARKER = "[NEED_HUMAN]"
+
+
+async def _auto_escalate(
+    bot: Bot, message: Message, question: str, ai_brief: str
+) -> None:
+    """Если модель прислала [NEED_HUMAN] — заводим тикет без кнопок."""
+    chat_id = message.chat.id
+    user = message.from_user
+    t = await create_ticket(
+        title=question[:120],
+        user_text=question,
+        ai_answer=f"{_ESCALATE_MARKER} {ai_brief}".strip(),
+        tg_chat_id=chat_id,
+        tg_username=user.username if user else None,
+        tg_full_name=user.full_name if user else "—",
+        priority="medium",
+    )
+    await message.answer(
+        f"🤖 Я не нашёл точного ответа в базе знаний — передал вопрос оператору.\n\n"
+        f"Тикет <code>{t['id']}</code> создан, ответ придёт сюда же.",
+    )
+    for admin_id in list(_authed_admins):
+        try:
+            await bot.send_message(
+                admin_id,
+                f"🆕 Новый тикет <code>{t['id']}</code> от "
+                f"<code>{(user.username if user else None) or (user.full_name if user else '—')}</code> "
+                f"(<i>авто-эскалация: AI не знает ответа</i>):\n\n"
+                f"<i>{question[:300]}</i>\n\n/admin",
+            )
+        except Exception as e:  # noqa: BLE001
+            log.warning("notify admin %s failed: %s", admin_id, e)
+
+
 @router.message(F.text)
-async def on_message(message: Message) -> None:
+async def on_message(message: Message, bot: Bot) -> None:
     if message.text and message.text.startswith("/"):
         # необработанная команда
         return
@@ -369,10 +436,20 @@ async def on_message(message: Message) -> None:
         log.exception("backend error")
         await thinking.edit_text(f"⚠️ Бэк не отвечает: {e}")
         return
+
+    # Авто-эскалация: первая строка ответа начинается с [NEED_HUMAN].
+    head = answer.lstrip()
+    if head.startswith(_ESCALATE_MARKER):
+        # Снимаем маркер, остаток первой строки — краткое описание для оператора.
+        rest = head[len(_ESCALATE_MARKER):].strip()
+        brief = rest.splitlines()[0] if rest else question[:120]
+        await thinking.delete()
+        await _auto_escalate(bot, message, question, brief)
+        return
+
     _last_exchange[chat_id] = {"question": question, "answer": answer}
-    # Telegram режет длинные сообщения — обрежем до 3500 символов на всякий.
     text = answer if len(answer) <= 3500 else answer[:3500] + "…"
-    sent = await thinking.edit_text(text, reply_markup=_kb_helped(thinking.message_id))
+    await thinking.edit_text(text, reply_markup=_kb_helped(thinking.message_id))
 
 
 # --- entry point ---
