@@ -18,9 +18,20 @@ import asyncio
 import json
 import logging
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Any
+
+_APPENDIX_RE = re.compile(r"\n+##\s*(Источники|Цитаты)\b", re.IGNORECASE)
+
+
+def _strip_rag_appendix(text: str) -> str:
+    """Срезает блоки `## Источники` / `## Цитаты` (Day-24 автогенерация)."""
+    m = _APPENDIX_RE.search(text)
+    if not m:
+        return text
+    return text[: m.start()].rstrip()
 
 import httpx
 from aiogram import Bot, Dispatcher, F, Router
@@ -149,7 +160,8 @@ async def _ask_backend(user_text: str, conversation_id: str) -> str:
                     continue
                 if isinstance(chunk, str):
                     text_parts.append(chunk)
-    return "".join(text_parts).strip() or "(пустой ответ от модели)"
+    raw = "".join(text_parts).strip()
+    return _strip_rag_appendix(raw) or "(пустой ответ от модели)"
 
 
 # --- состояния FSM для админского reply ---
