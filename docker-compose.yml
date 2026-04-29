@@ -25,6 +25,20 @@ services:
       - app
     restart: unless-stopped
 
+  bot:
+    build:
+      context: .
+      dockerfile: bot/Dockerfile
+    env_file: .env  # TELEGRAM_BOT_TOKEN, ADMIN_TG_IDS
+    environment:
+      - BACKEND_URL=http://app:8000
+    volumes:
+      # Тикеты пишутся в data/support_tickets.json — тот же файл читает MCP в app.
+      - ./data:/app/data
+    depends_on:
+      - app
+    restart: unless-stopped
+
 networks:
   default:
     ipam:

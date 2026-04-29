@@ -153,10 +153,19 @@ class AgentStreamingMixin:
 
         # Day 31: /help — ассистент-разработчик. Форсим RAG и подмешиваем
         # системный промпт «отвечай только из индекса проекта + текущая git-ветка».
+        # Day 33: /support — AI-агент поддержки PolarLine. Похожий механизм:
+        # форсит RAG (FAQ), плюс через MCP подтягивает данные тикета/юзера если
+        # в реплике упомянуты `TKT-###` / `user-###`.
         from .help_command import (
             detect_help_command,
             force_help_rag_cfg,
             help_system_message,
+        )
+        from .support_command import (
+            detect_support_command,
+            force_support_rag_cfg,
+            gather_ticket_context,
+            support_system_message,
         )
 
         help_msg: Message | None = None
@@ -166,6 +175,13 @@ class AgentStreamingMixin:
                 incoming[-1] = Message(role="user", content=stripped)
                 rag = force_help_rag_cfg(rag)
                 help_msg = await help_system_message()
+            else:
+                is_support, sup_stripped = detect_support_command(incoming[-1].content)
+                if is_support:
+                    ticket_ctx = await gather_ticket_context(sup_stripped)
+                    incoming[-1] = Message(role="user", content=sup_stripped)
+                    rag = force_support_rag_cfg(rag)
+                    help_msg = support_system_message(ticket_ctx)
 
         state = self._get_conversation_state(conversation_id)
         # None = старые клиенты: фазы задачи как раньше. False = только обычный чат (UI «План» выкл).
