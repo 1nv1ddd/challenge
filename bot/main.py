@@ -449,7 +449,11 @@ async def on_message(message: Message, bot: Bot) -> None:
 
     _last_exchange[chat_id] = {"question": question, "answer": answer}
     text = answer if len(answer) <= 3500 else answer[:3500] + "…"
-    await thinking.edit_text(text, reply_markup=_kb_helped(thinking.message_id))
+    # AI-текст идёт plain text — внутри встречаются `<пароль>`, `<id>` и прочие
+    # ломающие HTML-парсер штуки; свои бот-сообщения остаются HTML.
+    await thinking.edit_text(
+        text, parse_mode=None, reply_markup=_kb_helped(thinking.message_id)
+    )
 
 
 # --- entry point ---
