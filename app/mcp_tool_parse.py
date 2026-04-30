@@ -6,14 +6,30 @@ import json
 import re
 
 _MCP_FENCE_RE = re.compile(r"```mcp\s*([\s\S]*?)```", re.IGNORECASE)
+_JSON_FENCE_RE = re.compile(r"```json\s*([\s\S]*?)```", re.IGNORECASE)
+
+
+def _extract_json_candidate(text: str) -> str | None:
+    """Принимаем три формы: ```mcp {...} ```, ```json {...} ```, или голый JSON
+    в качестве полного ответа модели (часто эмитят OpenAI-tuned LLM)."""
+    s = text.strip()
+    if not s:
+        return None
+    if m := _MCP_FENCE_RE.search(s):
+        return m.group(1).strip()
+    if m := _JSON_FENCE_RE.search(s):
+        return m.group(1).strip()
+    if s.startswith("{") and s.endswith("}"):
+        return s
+    return None
 
 
 def _parse_mcp_tool_call(text: str) -> dict | None:
-    m = _MCP_FENCE_RE.search(text.strip())
-    if not m:
+    candidate = _extract_json_candidate(text)
+    if candidate is None:
         return None
     try:
-        data = json.loads(m.group(1).strip())
+        data = json.loads(candidate)
     except json.JSONDecodeError:
         return None
     if not isinstance(data, dict) or "name" not in data:
@@ -23,7 +39,14 @@ def _parse_mcp_tool_call(text: str) -> dict | None:
         args = {}
     if not isinstance(args, dict):
         return None
-    out: dict = {"name": str(data["name"]), "arguments": args}
+    name = str(data["name"]).strip()
+    # Снимаем неймспейсный префикс типа `filemcp.search_in_files` —
+    # модели регулярно его додумывают по аналогии с OpenAI function calling.
+    if "." in name:
+        name = name.rsplit(".", 1)[-1]
+    if not name:
+        return None
+    out: dict = {"name": name, "arguments": args}
     srv = data.get("server")
     if srv is not None and str(srv).strip():
         out["server"] = str(srv).strip().lower()
