@@ -235,10 +235,15 @@ def preview_patch(path: str, old_str: str, new_str: str) -> str:
 
 @app.tool()
 def write_file(path: str, content: str) -> str:
-    """Создать или перезаписать файл `path` содержимым `content`. Расширение
-    должно быть в whitelist'е (py/md/yml/json/...), путь — не в blacklist'е
-    (.env, .git/, .venv/, data/*.sqlite). Атомарная запись через temp+rename.
-    Возвращает {path, bytes_written, created} ('created'=true если файла не было)."""
+    """ЕДИНСТВЕННЫЙ способ создать или изменить файл проекта. Если пользователь
+    просит «сохрани», «создай», «обнови», «запиши» — обязательно вызывай этот
+    tool с готовым содержимым в `content`. Не пиши содержимое файла обычным
+    текстом — без этого вызова файл реально не появится.
+
+    Атомарная запись через temp+rename. Расширение должно быть в whitelist'е
+    (py/md/yml/json/...), путь — не в blacklist'е (.env, .git/, .venv/,
+    data/*.sqlite). Возвращает {path, bytes_written, created}
+    ('created'=true если файла не было)."""
     p = _resolve_inside_root(path)
     if p is None:
         return _err(f"путь {path} вне корня проекта")
