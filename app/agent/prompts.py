@@ -88,7 +88,7 @@ class AgentPromptsMixin:
             "а не словесное намерение.",
             "",
             "Ключ arguments — JSON по схеме параметров.",
-            "Инструменты (server → name):",
+            "Доступные инструменты — В JSON `name` пиши именно строку из бэктиков ниже:",
         ]
         names: set[str] = set()
         for t in bridge["tools"]:
@@ -99,7 +99,13 @@ class AgentPromptsMixin:
             if nm:
                 names.add(str(nm))
             desc = (t.get("description") or "").strip() or "—"
-            lines.append(f"- **{sid}** → `{nm}`: {desc}")
+            # Имя инструмента ставим первым и в бэктиках, чтобы модель не путала
+            # его с server-id (раньше формат был `**{sid}** → \`{nm}\`` и модель
+            # эмитила name=sid).
+            if multi:
+                lines.append(f"- `{nm}` (server: `{sid}`) — {desc}")
+            else:
+                lines.append(f"- `{nm}` — {desc}")
         if "run_pipeline" in names:
             rp_ex = (
                 '{"server": "radar", "name": "run_pipeline", "arguments": {"repository": "encode/httpx"}}'
