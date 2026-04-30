@@ -40,10 +40,13 @@ def _parse_mcp_tool_call(text: str) -> dict | None:
     if not isinstance(args, dict):
         return None
     name = str(data["name"]).strip()
-    # Снимаем неймспейсный префикс типа `filemcp.search_in_files` —
-    # модели регулярно его додумывают по аналогии с OpenAI function calling.
-    if "." in name:
-        name = name.rsplit(".", 1)[-1]
+    # Снимаем неймспейсный префикс — модели додумывают `filemcp.search_in_files`,
+    # `filemcp:search_in_files`, `filemcp/search_in_files` по аналогии с OpenAI
+    # function calling. Берём всё после последнего разделителя.
+    for sep in (".", ":", "/", "::"):
+        if sep in name:
+            name = name.rsplit(sep, 1)[-1]
+    name = name.strip()
     if not name:
         return None
     out: dict = {"name": name, "arguments": args}
