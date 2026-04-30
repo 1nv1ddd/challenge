@@ -1,7 +1,37 @@
 from __future__ import annotations
 
 import html
+import re
 from collections.abc import AsyncIterator
+
+# Анонс действия словами без последующего MCP-вызова: типичная болезнь
+# GPT-4o-mini в нашем custom-fence MCP-протоколе. Используется в стрим-цикле,
+# чтобы прокрутить ещё одну итерацию с подсказкой вместо завершения чата.
+_ANNOUNCE_RE = re.compile(
+    r"\b("
+    r"теперь\s+(прочитаю|открою|вызову|сделаю|запишу|сохраню|обновлю|создам|"
+    r"выполню|подготовлю|сформирую|сгенерирую)|"
+    r"сейчас\s+(прочитаю|открою|вызову|сделаю|запишу|сохраню|обновлю|создам|"
+    r"выполню|подготовлю|сформирую|сгенерирую)|"
+    r"далее\s+(прочитаю|открою|вызову|сделаю|запишу|сохраню|обновлю|выполню)|"
+    r"я\s+(прочитаю|открою|вызову|сохраню|запишу|обновлю|создам|сформирую|сгенерирую)|"
+    r"приступаю\s+к|приступлю\s+к|выполняю\s+(это|данное)\s+действие|"
+    r"сохраню\s+(этот|это|файл|содерж|результат|adr)|"
+    r"запишу\s+(этот|это|файл|содерж|результат|adr)|"
+    r"создам\s+(этот|файл|новый)|"
+    r"сформирую\s+(этот|файл|содерж)"
+    r")",
+    re.IGNORECASE,
+)
+
+
+def _looks_like_announce(text: str) -> bool:
+    """True если в хвосте реплики виден анонс типа «теперь прочитаю», «сохраню ADR»."""
+    if not text:
+        return False
+    tail = "\n".join(text.strip().splitlines()[-4:])
+    return bool(_ANNOUNCE_RE.search(tail))
+
 
 from .. import mcp_panel
 from ..agent_constants import (
@@ -378,6 +408,33 @@ class AgentStreamingMixin:
                         *working_msgs,
                         Message(role="assistant", content=step_text.strip()),
                         Message(role="user", content=follow_user),
+                    ]
+                    continue
+                # Защита от анонсов без действий («теперь прочитаю», «сохраню этот ADR»):
+                # модель часто описывает следующий шаг словами, не выпуская блок mcp.
+                # Если детектим такой паттерн, и есть бюджет — прокручиваем ещё одну
+                # итерацию с явной подсказкой «эмитти tool сейчас».
+                if (
+                    not call
+                    and _mcp_step < _MCP_MAX_STEPS - 1
+                    and _looks_like_announce(step_text)
+                ):
+                    yield StreamResult(text=step_text)
+                    if step_text.strip():
+                        mcp_streamed_blocks.append(step_text.strip())
+                    nudge = (
+                        "В предыдущей реплике ты словами анонсировал следующий шаг "
+                        "(«сейчас сделаю», «теперь прочитаю», «сохраню» и т.п.), но не "
+                        "выпустил блок ```mcp. Это запрещено правилами выше. "
+                        "Если шаг ещё нужен — выпусти его сейчас одним блоком ```mcp с "
+                        "полями name и arguments, без слов до и после. Если все нужные "
+                        "действия уже сделаны — дай финальный текстовый ответ пользователю "
+                        "без анонсов о будущем."
+                    )
+                    working_msgs = [
+                        *working_msgs,
+                        Message(role="assistant", content=step_text.strip()),
+                        Message(role="user", content=nudge),
                     ]
                     continue
                 if step_text.strip():
