@@ -1,3 +1,5 @@
+"""Стриминг ответа модели: генерация чанков, продвижение FSM и подавление announce-without-act."""
+
 from __future__ import annotations
 
 import html

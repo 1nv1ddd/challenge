@@ -1,3 +1,5 @@
+"""Точка входа FastAPI: сборка app, подключение роутеров (hub, MCP, планировщик), статики и lifespan."""
+
 from __future__ import annotations
 
 from fastapi import FastAPI

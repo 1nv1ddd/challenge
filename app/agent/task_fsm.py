@@ -1,3 +1,5 @@
+"""FSM задачи: фазы, легальные переходы и продвижение по ним (методы миксина агента)."""
+
 from __future__ import annotations
 
 import time

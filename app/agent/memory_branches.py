@@ -1,3 +1,5 @@
+"""Слои памяти, ветки/чекпоинты, профили стиля и инварианты диалога."""
+
 from __future__ import annotations
 
 import time

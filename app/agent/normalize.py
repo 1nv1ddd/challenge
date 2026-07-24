@@ -1,3 +1,5 @@
+"""Загрузка/сохранение истории и нормализация состояния (stats, task_state)."""
+
 from __future__ import annotations
 
 import json

@@ -1,3 +1,5 @@
+"""DTO и провайдеры LLM: интерфейс AIProvider, реализации RouterAI и Ollama, разбор стрима."""
+
 from __future__ import annotations
 
 import json
