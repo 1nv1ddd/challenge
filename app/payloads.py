@@ -146,6 +146,41 @@ class ProfilePayload:
         )
 
 
+@dataclass(frozen=True)
+class InvariantsPayload:
+    conversation_id: str
+    invariants: dict[str, Any]
+    replace: bool
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> InvariantsPayload:
+        raw = body.get("invariants")
+        return cls(
+            conversation_id=str(body.get("conversation_id", "default")),
+            invariants=raw if isinstance(raw, dict) else {},
+            replace=bool(body.get("replace", True)),
+        )
+
+
+@dataclass(frozen=True)
+class TaskStatePayload:
+    conversation_id: str
+    phase: str | None
+    current_step: str | None
+    expected_action: str | None
+    action: str | None
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> TaskStatePayload:
+        return cls(
+            conversation_id=str(body.get("conversation_id", "default")),
+            phase=body.get("phase"),
+            current_step=body.get("current_step"),
+            expected_action=body.get("expected_action"),
+            action=body.get("action"),
+        )
+
+
 def sse_error_line(exc: BaseException) -> str:
     """Одна строка SSE с префиксом [ERROR] для стрима чата."""
     if isinstance(exc, (LookupError, ValueError)):

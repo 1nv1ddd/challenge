@@ -12,9 +12,11 @@ from ..payloads import (
     BranchPayload,
     ChatRequestPayload,
     CheckpointPayload,
+    InvariantsPayload,
     ProfilePayload,
     RagComparePayload,
     RagModesComparePayload,
+    TaskStatePayload,
     sse_error_line,
 )
 from ..rag.status_api import build_rag_status_response
@@ -191,31 +193,24 @@ async def list_invariants(conversation_id: str):
 @router.post("/api/invariants")
 async def set_invariants(request: Request):
     body = await request.json()
-    conversation_id: str = body.get("conversation_id", "default")
-    replace: bool = bool(body.get("replace", True))
-    raw = body.get("invariants")
-    invariants = raw if isinstance(raw, dict) else {}
+    ip = InvariantsPayload.from_body(body if isinstance(body, dict) else {})
     return agent.set_invariants(
-        conversation_id=conversation_id,
-        invariants=invariants,
-        replace=replace,
+        conversation_id=ip.conversation_id,
+        invariants=ip.invariants,
+        replace=ip.replace,
     )
 
 
 @router.post("/api/task-state")
 async def update_task_state(request: Request):
     body = await request.json()
-    conversation_id: str = body.get("conversation_id", "default")
-    phase: str | None = body.get("phase")
-    current_step: str | None = body.get("current_step")
-    expected_action: str | None = body.get("expected_action")
-    action: str | None = body.get("action")
+    ts = TaskStatePayload.from_body(body if isinstance(body, dict) else {})
     return agent.update_task_state(
-        conversation_id=conversation_id,
-        phase=phase,
-        current_step=current_step,
-        expected_action=expected_action,
-        action=action,
+        conversation_id=ts.conversation_id,
+        phase=ts.phase,
+        current_step=ts.current_step,
+        expected_action=ts.expected_action,
+        action=ts.action,
     )
 
 
