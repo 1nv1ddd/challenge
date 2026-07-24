@@ -1,0 +1,4 @@
+{"id": "T06", "type": "feature", "seconds": 29.0, "tokens": 115, "tok_s": 4.0}
+{"id": "T04", "type": "refactor", "seconds": 29.5, "tokens": 382, "tok_s": 12.9}
+{"id": "T14", "type": "refactor", "seconds": 12.4, "tokens": 155, "tok_s": 12.5}
+{"id": "T02", "type": "test", "seconds": 14.4, "tokens": 189, "tok_s": 13.1}
