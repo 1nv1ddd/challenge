@@ -126,7 +126,8 @@ async def list_branches(conversation_id: str):
 
 @router.post("/api/checkpoints")
 async def create_checkpoint(request: Request):
-    body = await request.json()
+    raw_body = await request.json()
+    body = raw_body if isinstance(raw_body, dict) else {}
     conversation_id: str = body.get("conversation_id", "default")
     branch_id: str = body.get("branch_id", "main")
     return agent.create_checkpoint(conversation_id=conversation_id, branch_id=branch_id)
