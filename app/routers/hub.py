@@ -17,6 +17,7 @@ from ..payloads import (
     RagComparePayload,
     RagModesComparePayload,
     TaskStatePayload,
+    as_dict,
     sse_error_line,
 )
 from ..rag.status_api import build_rag_status_response
@@ -37,7 +38,7 @@ async def list_models():
 @router.post("/api/chat")
 async def chat(request: Request):
     body = await request.json()
-    p = ChatRequestPayload.from_body(body if isinstance(body, dict) else {})
+    p = ChatRequestPayload.from_body(as_dict(body))
 
     async def event_stream():
         try:
@@ -72,7 +73,7 @@ async def rag_compare(request: Request):
     if not providers:
         raise HTTPException(status_code=503, detail="Нет настроенного провайдера (нужен ROUTERAI_API_KEY).")
     body = await request.json()
-    rc = RagComparePayload.from_body(body if isinstance(body, dict) else {})
+    rc = RagComparePayload.from_body(as_dict(body))
     if not rc.provider_name or not rc.model or not rc.message:
         raise HTTPException(
             status_code=400,
@@ -101,7 +102,7 @@ async def rag_compare_modes(request: Request):
     if not providers:
         raise HTTPException(status_code=503, detail="Нет настроенного провайдера (нужен ROUTERAI_API_KEY).")
     body = await request.json()
-    pm = RagModesComparePayload.from_body(body if isinstance(body, dict) else {})
+    pm = RagModesComparePayload.from_body(as_dict(body))
     if not pm.provider_name or not pm.model or not pm.message:
         raise HTTPException(
             status_code=400,
@@ -137,14 +138,14 @@ async def list_branches(conversation_id: str):
 @router.post("/api/checkpoints")
 async def create_checkpoint(request: Request):
     body = await request.json()
-    cp = CheckpointPayload.from_body(body if isinstance(body, dict) else {})
+    cp = CheckpointPayload.from_body(as_dict(body))
     return agent.create_checkpoint(conversation_id=cp.conversation_id, branch_id=cp.branch_id)
 
 
 @router.post("/api/branches")
 async def create_branch(request: Request):
     body = await request.json()
-    br = BranchPayload.from_body(body if isinstance(body, dict) else {})
+    br = BranchPayload.from_body(as_dict(body))
     if not br.checkpoint_id:
         raise HTTPException(status_code=400, detail="Нужно поле checkpoint_id.")
     return agent.create_branch(
@@ -167,7 +168,7 @@ async def list_profiles():
 @router.post("/api/profiles")
 async def upsert_profile(request: Request):
     body = await request.json()
-    pp = ProfilePayload.from_body(body if isinstance(body, dict) else {})
+    pp = ProfilePayload.from_body(as_dict(body))
     try:
         return agent.upsert_profile(
             profile_id=pp.profile_id,
@@ -193,7 +194,7 @@ async def list_invariants(conversation_id: str):
 @router.post("/api/invariants")
 async def set_invariants(request: Request):
     body = await request.json()
-    ip = InvariantsPayload.from_body(body if isinstance(body, dict) else {})
+    ip = InvariantsPayload.from_body(as_dict(body))
     return agent.set_invariants(
         conversation_id=ip.conversation_id,
         invariants=ip.invariants,
@@ -204,7 +205,7 @@ async def set_invariants(request: Request):
 @router.post("/api/task-state")
 async def update_task_state(request: Request):
     body = await request.json()
-    ts = TaskStatePayload.from_body(body if isinstance(body, dict) else {})
+    ts = TaskStatePayload.from_body(as_dict(body))
     return agent.update_task_state(
         conversation_id=ts.conversation_id,
         phase=ts.phase,

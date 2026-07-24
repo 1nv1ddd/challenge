@@ -6,6 +6,11 @@ from dataclasses import dataclass
 from typing import Any
 
 
+def as_dict(body: Any) -> dict[str, Any]:
+    """Тело запроса как dict: не-объектный JSON (list/str/...) деградирует к пустому dict."""
+    return body if isinstance(body, dict) else {}
+
+
 @dataclass(frozen=True)
 class ChatRequestPayload:
     provider_name: str
