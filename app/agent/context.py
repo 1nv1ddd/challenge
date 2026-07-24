@@ -1,3 +1,5 @@
+"""Сборка контекста запроса к модели: окно истории, системные сообщения, добавление хода."""
+
 from __future__ import annotations
 
 from ..agent_constants import (

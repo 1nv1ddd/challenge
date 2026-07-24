@@ -1,3 +1,5 @@
+"""Сборка системных сообщений: рабочая/долгосрочная память, профиль, MCP-мост, инварианты."""
+
 from __future__ import annotations
 
 from ..agent_constants import TASK_ALLOWED_EDGES, TASK_PHASE_MODEL_GUIDANCE

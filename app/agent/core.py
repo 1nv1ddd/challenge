@@ -1,3 +1,5 @@
+"""Ядро агента: класс SimpleChatAgent, собирающий миксины памяти, RAG, FSM и стриминга."""
+
 from __future__ import annotations
 
 from pathlib import Path
