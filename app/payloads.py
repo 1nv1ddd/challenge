@@ -127,6 +127,25 @@ class BranchPayload:
         )
 
 
+@dataclass(frozen=True)
+class ProfilePayload:
+    profile_id: str
+    name: str
+    style: str
+    format_pref: str
+    constraints: str
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> ProfilePayload:
+        return cls(
+            profile_id=str(body.get("profile_id", "")),
+            name=str(body.get("name", "")),
+            style=str(body.get("style", "")),
+            format_pref=str(body.get("format", "")),
+            constraints=str(body.get("constraints", "")),
+        )
+
+
 def sse_error_line(exc: BaseException) -> str:
     """Одна строка SSE с префиксом [ERROR] для стрима чата."""
     if isinstance(exc, (LookupError, ValueError)):

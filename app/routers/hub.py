@@ -12,6 +12,7 @@ from ..payloads import (
     BranchPayload,
     ChatRequestPayload,
     CheckpointPayload,
+    ProfilePayload,
     RagComparePayload,
     RagModesComparePayload,
     sse_error_line,
@@ -164,19 +165,14 @@ async def list_profiles():
 @router.post("/api/profiles")
 async def upsert_profile(request: Request):
     body = await request.json()
-    body = body if isinstance(body, dict) else {}
-    profile_id: str = body.get("profile_id", "")
-    name: str = body.get("name", "")
-    style: str = body.get("style", "")
-    format_pref: str = body.get("format", "")
-    constraints: str = body.get("constraints", "")
+    pp = ProfilePayload.from_body(body if isinstance(body, dict) else {})
     try:
         return agent.upsert_profile(
-            profile_id=profile_id,
-            name=name,
-            style=style,
-            format_pref=format_pref,
-            constraints=constraints,
+            profile_id=pp.profile_id,
+            name=pp.name,
+            style=pp.style,
+            format_pref=pp.format_pref,
+            constraints=pp.constraints,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc).strip() or "ValueError") from exc
