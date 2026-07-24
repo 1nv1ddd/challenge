@@ -12,13 +12,17 @@
 
 ## Память диалога
 
+Идентификатор диалога и ветка передаются query-параметрами (`?conversation_id=…&branch_id=…`), а не в пути.
+
 | Метод | Путь | Что |
 |---|---|---|
-| `GET` | `/api/memory/{conversation_id}` | Слои памяти: short_term (sliding window), working_memory (per-conv), long_term (global), invariants |
-| `GET` | `/api/memory/{conversation_id}/branches` | Список веток |
-| `POST` | `/api/memory/{conversation_id}/checkpoint` | Снапшот текущей ветки → checkpoint |
-| `POST` | `/api/memory/{conversation_id}/branch` | Создать ветку из checkpoint'а |
-| `GET/POST` | `/api/profiles[/{id}]` | Профили стиля (style/format/constraints) |
+| `GET` | `/api/memory?conversation_id=&branch_id=` | Слои памяти: short_term (sliding window), working_memory (per-conv), long_term (global), invariants |
+| `GET` | `/api/branches?conversation_id=` | Список веток диалога |
+| `POST` | `/api/checkpoints` | Снапшот текущей ветки → checkpoint. Body: `conversation_id`, `branch_id` |
+| `POST` | `/api/branches` | Создать ветку из checkpoint'а. Body: `conversation_id`, `checkpoint_id` (обязателен, иначе 400), `branch_name` |
+| `GET/POST` | `/api/profiles` | Профили стиля (style/format/constraints) |
+| `GET/POST` | `/api/task-state?conversation_id=` | Состояние FSM задачи (Day 15): фаза, разрешённые переходы, действия `next`/`pause`/`resume`/`reset` |
+| `GET/POST` | `/api/invariants?conversation_id=` | Инварианты диалога (пользовательские правила поверх памяти) |
 
 ## RAG
 
@@ -26,16 +30,18 @@
 |---|---|---|
 | `GET` | `/api/rag/status` | Состояние индекса: путь, `indexed`, статистика по стратегиям |
 | `POST` | `/api/rag/compare` | Сравнение ответов LLM **без RAG vs с RAG** (Day 22) |
-| `POST` | `/api/rag/compare-modes` | Сравнение «базовый RAG» vs «фильтр+реранк+rewrite» (Day 23) |
+| `POST` | `/api/rag/compare_modes` | Сравнение «базовый RAG» vs «фильтр+реранк+rewrite» (Day 23) |
 
 ## Планировщик и MCP
 
 | Метод | Путь | Что |
 |---|---|---|
-| `GET` | `/api/scheduler/tasks` | Список задач планировщика (SQLite в `data/mcp_scheduler.sqlite`) |
-| `POST` | `/api/scheduler/tasks` | Создать задачу |
+| `GET` | `/api/scheduler/ping` | Health-check планировщика + путь SSE-канала |
+| `GET` | `/api/scheduler/jobs` | Список задач планировщика из стора (`data/mcp_scheduler.sqlite`): `{ok, jobs, count}` |
 | `GET` | `/api/scheduler/stream` | SSE-канал тиков планировщика → UI инжектит системные сообщения в активный чат |
-| `GET/POST` | `/api/mcp/*` | Подключение/отключение MCP-серверов через stdio, список tools, вызовы |
+| `GET` | `/api/mcp/status` | Статус подключённых MCP-серверов и их tools |
+| `POST` | `/api/mcp/connect` | Подключить MCP-сервер (stdio), вернуть список tools |
+| `POST` | `/api/mcp/disconnect` | Отключить MCP-сервер |
 
 ## Провайдеры
 
