@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from .scheduler_notify import sse_scheduler_subscribe
@@ -21,6 +21,15 @@ async def scheduler_jobs() -> dict:
     """Список задач планировщика из стора (без прямого доступа к SQLite)."""
     jobs = list_jobs()
     return {"ok": True, "jobs": jobs, "count": len(jobs)}
+
+
+@router.get("/jobs/{task_id}")
+async def scheduler_job(task_id: str) -> dict:
+    """Одна задача планировщика по task_id; 404, если такой нет."""
+    for job in list_jobs():
+        if job.get("task_id") == task_id:
+            return {"ok": True, "job": job}
+    raise HTTPException(status_code=404, detail=f"Задача планировщика не найдена: {task_id}")
 
 
 @router.get("/stream")
