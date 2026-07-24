@@ -139,7 +139,7 @@ async def create_branch(request: Request):
     checkpoint_id: str = body.get("checkpoint_id", "")
     branch_name: str | None = body.get("branch_name")
     if not checkpoint_id:
-        return {"error": "checkpoint_id is required"}
+        raise HTTPException(status_code=400, detail="Нужно поле checkpoint_id.")
     return agent.create_branch(
         conversation_id=conversation_id,
         checkpoint_id=checkpoint_id,
