@@ -8,7 +8,14 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, StreamingResponse
 
 from ..bootstrap import STATIC_DIR, agent, providers
-from ..payloads import ChatRequestPayload, RagComparePayload, RagModesComparePayload, sse_error_line
+from ..payloads import (
+    BranchPayload,
+    ChatRequestPayload,
+    CheckpointPayload,
+    RagComparePayload,
+    RagModesComparePayload,
+    sse_error_line,
+)
 from ..rag.status_api import build_rag_status_response
 
 router = APIRouter()
@@ -126,25 +133,21 @@ async def list_branches(conversation_id: str):
 
 @router.post("/api/checkpoints")
 async def create_checkpoint(request: Request):
-    raw_body = await request.json()
-    body = raw_body if isinstance(raw_body, dict) else {}
-    conversation_id: str = body.get("conversation_id", "default")
-    branch_id: str = body.get("branch_id", "main")
-    return agent.create_checkpoint(conversation_id=conversation_id, branch_id=branch_id)
+    body = await request.json()
+    cp = CheckpointPayload.from_body(body if isinstance(body, dict) else {})
+    return agent.create_checkpoint(conversation_id=cp.conversation_id, branch_id=cp.branch_id)
 
 
 @router.post("/api/branches")
 async def create_branch(request: Request):
     body = await request.json()
-    conversation_id: str = body.get("conversation_id", "default")
-    checkpoint_id: str = body.get("checkpoint_id", "")
-    branch_name: str | None = body.get("branch_name")
-    if not checkpoint_id:
+    br = BranchPayload.from_body(body if isinstance(body, dict) else {})
+    if not br.checkpoint_id:
         raise HTTPException(status_code=400, detail="Нужно поле checkpoint_id.")
     return agent.create_branch(
-        conversation_id=conversation_id,
-        checkpoint_id=checkpoint_id,
-        branch_name=branch_name,
+        conversation_id=br.conversation_id,
+        checkpoint_id=br.checkpoint_id,
+        branch_name=br.branch_name,
     )
 
 

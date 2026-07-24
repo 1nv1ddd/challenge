@@ -99,6 +99,34 @@ class RagModesComparePayload:
         )
 
 
+@dataclass(frozen=True)
+class CheckpointPayload:
+    conversation_id: str
+    branch_id: str
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> CheckpointPayload:
+        return cls(
+            conversation_id=str(body.get("conversation_id", "default")),
+            branch_id=str(body.get("branch_id", "main")),
+        )
+
+
+@dataclass(frozen=True)
+class BranchPayload:
+    conversation_id: str
+    checkpoint_id: str
+    branch_name: str | None
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> BranchPayload:
+        return cls(
+            conversation_id=str(body.get("conversation_id", "default")),
+            checkpoint_id=str(body.get("checkpoint_id", "")),
+            branch_name=body.get("branch_name"),
+        )
+
+
 def sse_error_line(exc: BaseException) -> str:
     """Одна строка SSE с префиксом [ERROR] для стрима чата."""
     if isinstance(exc, (LookupError, ValueError)):
