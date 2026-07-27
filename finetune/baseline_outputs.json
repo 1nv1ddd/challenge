@@ -1,0 +1,72 @@
+[
+  {
+    "n": 1,
+    "user": "Верни список всех задач планировщика из хранилища.",
+    "reference": "def list_jobs() -> list[dict]:\n    init_schema()\n    with _connect() as conn:\n        rows = conn.execute(\n            \"SELECT task_id, interval_seconds, task_type, payload, next_run, \"\n            \"last_run, created_at FROM jobs\",\n        ).fetchall()\n    return [dict(r) for r in rows]",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom dataclasses import dataclass\nfrom fastapi import APIRouter, HTTPException\nfrom typing import AsyncIterator, list\nfrom app.scheduler_store import fetch_all_tasks\n\nrouter = APIRouter()\n\n@dataclass\nclass TaskDTO:\n    id: int\n    name: str\n    description: str | None\n\n@router.get(\"/tasks\", response_model=list[TaskDTO])\nasync def get_all_tasks() -> list[TaskDTO]:\n    try:\n        tasks = await fetch_all_tasks()\n        return [TaskDTO(id=task['id'], name=task['name'], description=task['description']) for task in tasks]\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=str(exc))\n```",
+    "time_ms": 3976
+  },
+  {
+    "n": 2,
+    "user": "GET /api/models: обнови модели Ollama, если провайдер локальный, и верни список моделей агента.",
+    "reference": "@router.get(\"/api/models\")\nasync def list_models():\n    from ..providers import OllamaProvider\n\n    ollama = providers.get(\"ollama\")\n    if isinstance(ollama, OllamaProvider):\n        await ollama.refresh_models()\n    return agent.list_models()",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom fastapi import APIRouter, HTTPException\nfrom dataclasses import dataclass\nfrom typing import list, AsyncIterator\nfrom app.scheduler_store import get_local_models, update_local_models\n\nrouter = APIRouter()\n\n@dataclass\nclass ModelResponse:\n    model_name: str\n    is_updated: bool\n\n@router.get(\"/api/models\", response_model=list[ModelResponse])\nasync def get_models() -> list[ModelResponse]:\n    try:\n        local_models = await get_local_models()\n        updated_models = []\n\n        for model in local_models:\n            is_updated = await update_local_models(model)\n            updated_models.append(ModelResponse(model_name=model, is_updated=is_updated))\n\n        return updated_models\n\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=str(exc))\n```",
+    "time_ms": 4194
+  },
+  {
+    "n": 3,
+    "user": "GET /api/branches?conversation_id=...: верни список веток разговора у агента.",
+    "reference": "@router.get(\"/api/branches\")\nasync def list_branches(conversation_id: str):\n    return agent.list_branches(conversation_id)",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom fastapi import APIRouter, HTTPException, Query\nfrom dataclasses import dataclass\nfrom typing import AsyncIterator, list\nfrom app.scheduler_store import get_branches_by_conversation_id\n\nrouter = APIRouter()\n\n@dataclass\nclass Branch:\n    id: str\n    name: str\n\n@router.get(\"/api/branches\", response_model=list[Branch])\nasync def get_branches(conversation_id: str = Query(..., description=\"ID разговора\")) -> list[Branch]:\n    try:\n        branches = await get_branches_by_conversation_id(conversation_id)\n        return [Branch(id=branch['id'], name=branch['name']) for branch in branches]\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=str(exc))\n```",
+    "time_ms": 3656
+  },
+  {
+    "n": 4,
+    "user": "Добавь роут GET /api/health, который возвращает статус сервиса и текущее время в epoch.",
+    "reference": "@router.get(\"/api/health\")\nasync def health():\n    \"\"\"Простой health-check: сервис жив и его время.\"\"\"\n    return {\"ok\": True, \"time\": time.time()}",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom fastapi import APIRouter, HTTPException\nfrom datetime import datetime\nfrom time import time\n\nrouter = APIRouter()\n\n# Проверка состояния сервиса\n@router.get(\"/api/health\")\nasync def get_health() -> dict[str, int | str]:\n    try:\n        return {\n            \"status\": \"ok\",\n            \"timestamp\": int(time())\n        }\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=str(exc))\n```",
+    "time_ms": 4333
+  },
+  {
+    "n": 5,
+    "user": "Роут POST /api/branches: создаёт ветку через payload, 400 если имя пустое, ошибку значения агента пробрасывает как HTTPException.",
+    "reference": "@router.post(\"/api/branches\")\nasync def create_branch(request: Request):\n    \"\"\"Создать ветку разговора.\"\"\"\n    body = await request.json()\n    p = CreateBranchPayload.from_body(body if isinstance(body, dict) else {})\n    if not p.name:\n        raise HTTPException(status_code=400, detail=\"Нужно непустое поле name.\")\n    try:\n        return agent.create_branch(p.conversation_id, p.name)\n    except ValueError as exc:\n        raise HTTPException(status_code=400, detail=str(exc).strip() or \"ValueError\") from exc",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom fastapi import APIRouter, HTTPException\nfrom dataclasses import dataclass\nfrom typing import Any\nfrom app.scheduler_store import create_branch\nfrom app.models import Agent\n\nrouter = APIRouter()\n\n@dataclass\nclass BranchPayload:\n    name: str\n\n@router.post(\"/api/branches\")\nasync def create_branch_endpoint(payload: BranchPayload) -> dict[str, Any]:\n    if not payload.name:\n        raise HTTPException(status_code=400, detail=\"Имя ветки не может быть пустым\")\n    \n    try:\n        branch = await create_branch(payload.name)\n        return {\"branch\": branch}\n    except ValueError as exc:\n        raise HTTPException(status_code=400, detail=str(exc))\n```",
+    "time_ms": 5071
+  },
+  {
+    "n": 6,
+    "user": "Функция хранилища: верни задачу планировщика по task_id или None, если её нет.",
+    "reference": "def get_job(task_id: str) -> dict | None:\n    init_schema()\n    if not _TASK_ID_RE.match(task_id or \"\"):\n        raise ValueError(\"некорректный task_id\")\n    with _connect() as conn:\n        row = conn.execute(\n            \"SELECT task_id, interval_seconds, task_type, payload, next_run, \"\n            \"last_run, created_at FROM jobs WHERE task_id = ?\",\n            (task_id,),\n        ).fetchone()\n    return dict(row) if row else None",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom dataclasses import dataclass\nfrom typing import Optional\nimport sqlite3\n\nDATABASE_PATH = \"path/to/database.db\"\n\n@dataclass\nclass Task:\n    task_id: str\n    name: str\n    description: str | None\n\ndef get_task_by_id(task_id: str) -> Optional[Task]:\n    try:\n        connection = sqlite3.connect(DATABASE_PATH)\n        cursor = connection.cursor()\n        cursor.execute(\"SELECT task_id, name, description FROM tasks WHERE task_id = ?\", (task_id,))\n        row = cursor.fetchone()\n        if row:\n            return Task(task_id=row[0], name=row[1], description=row[2])\n        return None\n    except sqlite3.Error as exc:\n        raise RuntimeError(\"Ошибка доступа к базе данных\") from exc\n    finally:\n        connection.close()\n```",
+    "time_ms": 4293
+  },
+  {
+    "n": 7,
+    "user": "Абстрактный интерфейс хранилища памяти разговоров: load и save одного разговора по id.",
+    "reference": "\"\"\"Интерфейс хранилища памяти разговоров.\"\"\"\n\nfrom __future__ import annotations\n\nfrom abc import ABC, abstractmethod\n\n\nclass ConversationStore(ABC):\n    @abstractmethod\n    def load(self, conversation_id: str) -> dict:\n        ...\n\n    @abstractmethod\n    def save(self, conversation_id: str, state: dict) -> None:\n        ...",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom abc import ABC, abstractmethod\nfrom dataclasses import dataclass\n\n@dataclass\nclass ConversationDTO:\n    id: str\n    data: dict | None\n\nclass ConversationStorageInterface(ABC):\n    @abstractmethod\n    async def load(self, conversation_id: str) -> ConversationDTO | None:\n        ...\n\n    @abstractmethod\n    async def save(self, conversation: ConversationDTO) -> None:\n        ...\n```",
+    "time_ms": 3639
+  },
+  {
+    "n": 8,
+    "user": "Провайдер-заглушка EchoProvider на базе AIProvider: стримит обратно контент последнего пользовательского сообщения.",
+    "reference": "class EchoProvider(AIProvider):\n    \"\"\"Тестовый провайдер: возвращает последнее сообщение пользователя.\"\"\"\n\n    name = \"echo\"\n    models = [{\"id\": \"echo\", \"label\": \"Echo — тест\"}]\n\n    async def stream_chat(\n        self, messages: list[Message], model: str, temperature: float = 0.7\n    ) -> AsyncIterator[StreamResult]:\n        last_user = \"\"\n        for m in messages:\n            if m.role == \"user\":\n                last_user = m.content\n        yield StreamResult(text=last_user)\n        yield StreamResult(meta={\"model\": model, \"echo\": True})",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom abc import ABC, abstractmethod\nfrom dataclasses import dataclass\nfrom fastapi import APIRouter, HTTPException\nfrom typing import AsyncIterator\n\nUIMessages = list[dict]\n\n@dataclass\nclass UserMessage:\n    content: str\n\nclass AIProvider(ABC):\n    @abstractmethod\n    async def stream_response(self, message: UserMessage) -> AsyncIterator[str]:\n        pass\n\nclass EchoProvider(AIProvider):\n    async def stream_response(self, message: UserMessage) -> AsyncIterator[str]:\n        if not message.content:\n            raise HTTPException(status_code=400, detail=\"Сообщение не может быть пустым\")\n        yield message.content\n\nrouter = APIRouter()\n```",
+    "time_ms": 3731
+  },
+  {
+    "n": 9,
+    "user": "DTO настроек RAG-поиска: стратегия, top_k, порог сходства и опциональный путь к индексу, с from_body.",
+    "reference": "@dataclass(frozen=True)\nclass RagSearchPayload:\n    strategy: str\n    top_k: int\n    min_similarity: float\n    index_path: str | None\n\n    @classmethod\n    def from_body(cls, body: dict[str, Any]) -> RagSearchPayload:\n        raw_idx = body.get(\"index_path\")\n        ip = str(raw_idx).strip() if isinstance(raw_idx, str) and raw_idx.strip() else None\n        return cls(\n            strategy=str(body.get(\"strategy\") or \"fixed\").lower().strip(),\n            top_k=int(body.get(\"top_k\") or 8),\n            min_similarity=float(body.get(\"min_similarity\") or 0.28),\n            index_path=ip,\n        )",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom dataclasses import dataclass\nfrom fastapi import Body\n\n@dataclass\nclass RagSearchSettings:\n    strategy: str\n    top_k: int\n    similarity_threshold: float\n    index_path: str | None = Body(default=None)\n```",
+    "time_ms": 2557
+  },
+  {
+    "n": 10,
+    "user": "Роут POST /api/checkpoints: создаёт чекпойнт разговора; conversation_id из тела с дефолтом default.",
+    "reference": "@router.post(\"/api/checkpoints\")\nasync def create_checkpoint(request: Request):\n    \"\"\"Зафиксировать текущее состояние разговора как чекпойнт.\"\"\"\n    body = await request.json()\n    conversation_id = str(body.get(\"conversation_id\") or \"default\").strip()\n    label = str(body.get(\"label\") or \"\").strip()\n    return agent.create_checkpoint(conversation_id, label)",
+    "baseline_answer": "```python\nfrom __future__ import annotations\nfrom fastapi import APIRouter, HTTPException\nfrom dataclasses import dataclass\nfrom typing import Optional\nfrom app.scheduler_store import create_checkpoint\n\nrouter = APIRouter()\n\nDEFAULT_CONVERSATION_ID = \"default\"\n\n@dataclass\nclass CheckpointCreateDTO:\n    conversation_id: Optional[str] = DEFAULT_CONVERSATION_ID\n\n@router.post(\"/api/checkpoints\")\nasync def create_checkpoint_route(checkpoint: CheckpointCreateDTO) -> dict:\n    try:\n        checkpoint_id = await create_checkpoint(checkpoint.conversation_id)\n        return {\"checkpoint_id\": checkpoint_id}\n    except Exception as exc:\n        raise HTTPException(status_code=500, detail=str(exc))\n```",
+    "time_ms": 4117
+  }
+]
