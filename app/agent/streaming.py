@@ -198,6 +198,20 @@ class AgentStreamingMixin:
             support_system_message,
         )
 
+        # Day 7 (advance): /triage — обращение прогоняется через гейт уверенности,
+        # в чат уходит карточка вердикта, а не обычный ответ модели.
+        from .triage_command import detect_triage_command, render_triage_card, usage_markdown
+
+        if incoming and incoming[-1].role == "user":
+            is_triage, triage_text = detect_triage_command(incoming[-1].content)
+            if is_triage:
+                if not triage_text:
+                    yield StreamResult(text=usage_markdown())
+                    return
+                verdict = await self.triage_message(provider_name, model, triage_text)
+                yield StreamResult(text=render_triage_card(verdict, triage_text))
+                return
+
         help_msg: Message | None = None
         if incoming and incoming[-1].role == "user":
             is_help, stripped = detect_help_command(incoming[-1].content)

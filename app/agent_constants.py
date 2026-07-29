@@ -8,6 +8,23 @@ MODEL_CONTEXT_LIMITS = {
 INPUT_PRICE_RUB_PER_MILLION = 15.0
 OUTPUT_PRICE_RUB_PER_MILLION = 63.0
 WINDOW_SIZE_MESSAGES = 10
+# Day 7 (advance): триаж обращений поддержки с оценкой уверенности инференса.
+TRIAGE_CATEGORIES = ("billing", "technical", "account", "data_loss", "feedback", "other")
+TRIAGE_PRIORITIES = ("low", "normal", "high", "critical")
+TRIAGE_ACTIONS = ("auto_reply", "request_info", "escalate", "close")
+# Действия с необратимым эффектом: их гейт пускает только со статусом OK.
+TRIAGE_RISKY_ACTIONS = ("auto_reply", "close")
+# Порядок «безопасности» действия — используется при равенстве голосов (чем меньше, тем безопаснее).
+TRIAGE_ACTION_SAFETY_RANK = {"escalate": 0, "request_info": 1, "auto_reply": 2, "close": 3}
+TRIAGE_SAMPLES = 3
+TRIAGE_TEMPERATURE = 0.5
+TRIAGE_MAX_REPAIRS = 1
+TRIAGE_REASON_MAX_LEN = 400
+TRIAGE_SELFCHECK_BELOW = 0.9
+TRIAGE_CONFIDENCE_OK = 0.75
+TRIAGE_CONFIDENCE_UNSURE = 0.45
+TRIAGE_SELFCHECK_BONUS = 0.1
+TRIAGE_SELFCHECK_PENALTY = 0.35
 INVARIANTS_MAX_ITEMS = 30
 INVARIANT_KEY_MAX_LEN = 80
 INVARIANT_VAL_MAX_LEN = 600
