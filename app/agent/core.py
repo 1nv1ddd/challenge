@@ -11,6 +11,7 @@ from .normalize import AgentStateMixin
 from .prompts import AgentPromptsMixin
 from .provider_utils import AgentProviderUtilsMixin
 from .rag_context import AgentRagMixin
+from .routing import AgentRoutingMixin
 from .streaming import AgentStreamingMixin
 from .task_fsm import AgentTaskFsmMixin
 from .triage import AgentTriageMixin
@@ -19,6 +20,7 @@ from .triage import AgentTriageMixin
 class SimpleChatAgent(
     AgentStreamingMixin,
     AgentTriageMixin,
+    AgentRoutingMixin,
     AgentContextMixin,
     AgentRagMixin,
     AgentPromptsMixin,

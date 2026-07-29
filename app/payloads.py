@@ -5,7 +5,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from .agent_constants import TRIAGE_SAMPLES, TRIAGE_TEMPERATURE
+from .agent_constants import (
+    ROUTING_LARGE_MODEL,
+    ROUTING_SMALL_MODEL,
+    ROUTING_TEMPERATURE,
+    TRIAGE_SAMPLES,
+    TRIAGE_TEMPERATURE,
+)
 
 
 @dataclass(frozen=True)
@@ -124,6 +130,29 @@ class TriagePayload:
             model=str(body.get("model") or "").strip(),
             text=str(body.get("text") or "").strip(),
             samples=max(1, min(5, samples)),
+            temperature=temperature,
+        )
+
+
+@dataclass(frozen=True)
+class RoutePayload:
+    provider_name: str
+    question: str
+    small_model: str
+    large_model: str
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> RoutePayload:
+        try:
+            temperature = float(body.get("temperature", ROUTING_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = ROUTING_TEMPERATURE
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            question=str(body.get("question") or "").strip(),
+            small_model=str(body.get("small_model") or ROUTING_SMALL_MODEL).strip(),
+            large_model=str(body.get("large_model") or ROUTING_LARGE_MODEL).strip(),
             temperature=temperature,
         )
 

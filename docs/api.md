@@ -28,6 +28,13 @@
 | `POST` | `/api/rag/compare` | Сравнение ответов LLM **без RAG vs с RAG** (Day 22) |
 | `POST` | `/api/rag/compare-modes` | Сравнение «базовый RAG» vs «фильтр+реранк+rewrite» (Day 23) |
 
+## Уверенность и маршрутизация
+
+| Метод | Путь | Что |
+|---|---|---|
+| `POST` | `/api/triage` | Триаж обращения через гейт уверенности (Day 7). Body: `provider`, `model`, `text`, `samples`, `temperature`. Ответ: решение, статус `OK`/`UNSURE`/`FAIL`, confidence, метрики |
+| `POST` | `/api/route` | Ответ через каскад моделей (Day 8). Body: `question`, опционально `provider`, `small_model`, `large_model`, `temperature`. Ответ: `answer`, `tier`, `escalated`, `escalation_reason`, `preroute`, `attempts`, `metrics` |
+
 ## Планировщик и MCP
 
 | Метод | Путь | Что |

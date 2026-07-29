@@ -202,6 +202,11 @@ class AgentStreamingMixin:
         # в чат уходит карточка вердикта, а не обычный ответ модели.
         from .triage_command import detect_triage_command, render_triage_card, usage_markdown
 
+        # Day 8 (advance): /route — ответ идёт через каскад моделей (дешёвая → сильная),
+        # модель из UI игнорируется: тиры задаются константами роутинга.
+        from .route_command import detect_route_command, render_route_card
+        from .route_command import usage_markdown as route_usage_markdown
+
         if incoming and incoming[-1].role == "user":
             is_triage, triage_text = detect_triage_command(incoming[-1].content)
             if is_triage:
@@ -210,6 +215,16 @@ class AgentStreamingMixin:
                     return
                 verdict = await self.triage_message(provider_name, model, triage_text)
                 yield StreamResult(text=render_triage_card(verdict, triage_text))
+                return
+
+            is_route, route_text = detect_route_command(incoming[-1].content)
+            if is_route:
+                if not route_text:
+                    yield StreamResult(text=route_usage_markdown())
+                    return
+                result = await self.route_question(provider_name, route_text)
+                yield StreamResult(text=render_route_card(result))
+                yield StreamResult(meta=result.metrics)
                 return
 
         help_msg: Message | None = None

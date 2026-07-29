@@ -1,0 +1,1757 @@
+{
+  "small_model": "google/gemma-3n-e4b-it",
+  "large_model": "openai/gpt-4.1",
+  "temperature": 0.2,
+  "consistency_temperature": 0.2,
+  "summary": {
+    "total": 30,
+    "small_only": {
+      "correct": 24,
+      "correct_pct": 80.0,
+      "wrong_ids": [
+        "M03",
+        "M05",
+        "H06",
+        "T01",
+        "T02",
+        "T05"
+      ],
+      "cost_rub": 0.0805,
+      "latency_ms": {
+        "p50": 1937,
+        "p95": 7421
+      },
+      "latency_ms_avg": 2677
+    },
+    "large_only": {
+      "correct": 28,
+      "correct_pct": 93.3,
+      "wrong_ids": [
+        "M05",
+        "T01"
+      ],
+      "cost_rub": 3.0076,
+      "latency_ms": {
+        "p50": 2145,
+        "p95": 6130
+      },
+      "latency_ms_avg": 2450
+    },
+    "router": {
+      "correct": 25,
+      "correct_pct": 83.3,
+      "wrong_ids": [
+        "M03",
+        "M05",
+        "H06",
+        "T01",
+        "T02"
+      ],
+      "cost_rub": 0.6027,
+      "latency_ms": {
+        "p50": 2619,
+        "p95": 8338
+      },
+      "latency_ms_avg": 3094,
+      "paths": {
+        "small": 27,
+        "large": 1,
+        "small→large": 2
+      },
+      "kept_small": 27,
+      "kept_small_pct": 90.0,
+      "escalated_after_small": 2,
+      "prerouted_large": 1,
+      "llm_calls": 61,
+      "wasted_rub": 0.0118
+    },
+    "delta": {
+      "over_escalated": 1,
+      "over_escalated_ids": [
+        "T06"
+      ],
+      "rescued": 1,
+      "rescued_ids": [
+        "T05"
+      ],
+      "missed_escalation": 5,
+      "missed_escalation_ids": [
+        "M03",
+        "M05",
+        "H06",
+        "T01",
+        "T02"
+      ],
+      "preroute_overspend": 1,
+      "preroute_overspend_ids": [
+        "H01"
+      ],
+      "cost_vs_large_pct": 20.0,
+      "cost_vs_small_x": 7.49
+    }
+  },
+  "rows": [
+    {
+      "id": "S01",
+      "group": "simple",
+      "question": "Какая столица Австралии?",
+      "expect": [
+        "Канберр"
+      ],
+      "note": "Факт, частая ловушка «Сидней» — но для любой модели это база.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Канберра.",
+        "self_reported": 1.0,
+        "time_ms": 1764,
+        "prompt_tokens": 329,
+        "completion_tokens": 16,
+        "cost_rub": 0.0022,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Столица Австралии — Канберра.",
+        "self_reported": 0.99,
+        "time_ms": 2099,
+        "prompt_tokens": 323,
+        "completion_tokens": 18,
+        "cost_rub": 0.0801,
+        "correct": true
+      },
+      "router": {
+        "answer": "Канберра.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1750,
+        "cost_rub": 0.0044,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S02",
+      "group": "simple",
+      "question": "Сколько будет 2 + 2?",
+      "expect": [
+        "\\b4\\b"
+      ],
+      "note": "Минимальная арифметика.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "2 + 2 = 4",
+        "self_reported": 1.0,
+        "time_ms": 1333,
+        "prompt_tokens": 331,
+        "completion_tokens": 18,
+        "cost_rub": 0.0022,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "2 + 2 = 4.",
+        "self_reported": 1.0,
+        "time_ms": 1931,
+        "prompt_tokens": 325,
+        "completion_tokens": 16,
+        "cost_rub": 0.0789,
+        "correct": true
+      },
+      "router": {
+        "answer": "2 + 2 = 4",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1804,
+        "cost_rub": 0.0044,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S03",
+      "group": "simple",
+      "question": "Кто написал роман «Преступление и наказание»?",
+      "expect": [
+        "Достоевск"
+      ],
+      "note": "Факт из школьной программы.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Фёдор Михайлович Достоевский.",
+        "self_reported": 1.0,
+        "time_ms": 1503,
+        "prompt_tokens": 334,
+        "completion_tokens": 21,
+        "cost_rub": 0.0023,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Роман «Преступление и наказание» написал Фёдор Михайлович Достоевский.",
+        "self_reported": 1.0,
+        "time_ms": 1677,
+        "prompt_tokens": 330,
+        "completion_tokens": 33,
+        "cost_rub": 0.0937,
+        "correct": true
+      },
+      "router": {
+        "answer": "Фёдор Михайлович Достоевский.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1463,
+        "cost_rub": 0.0046,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S04",
+      "group": "simple",
+      "question": "Переведи на английский: синий кит",
+      "expect": [
+        "blue whale"
+      ],
+      "note": "Перевод устойчивого словосочетания.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Blue whale.",
+        "self_reported": 1.0,
+        "time_ms": 1831,
+        "prompt_tokens": 333,
+        "completion_tokens": 14,
+        "cost_rub": 0.0022,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Blue whale.",
+        "self_reported": 0.99,
+        "time_ms": 1776,
+        "prompt_tokens": 326,
+        "completion_tokens": 11,
+        "cost_rub": 0.075,
+        "correct": true
+      },
+      "router": {
+        "answer": "Blue whale.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1083,
+        "cost_rub": 0.0044,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S05",
+      "group": "simple",
+      "question": "В каком году человек впервые высадился на Луну?",
+      "expect": [
+        "1969"
+      ],
+      "note": "Дата-факт.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "1969 год.",
+        "self_reported": 1.0,
+        "time_ms": 816,
+        "prompt_tokens": 334,
+        "completion_tokens": 17,
+        "cost_rub": 0.0022,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "В 1969 году человек впервые высадился на Луну.",
+        "self_reported": 0.99,
+        "time_ms": 2249,
+        "prompt_tokens": 328,
+        "completion_tokens": 22,
+        "cost_rub": 0.0844,
+        "correct": true
+      },
+      "router": {
+        "answer": "1969 год.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1194,
+        "cost_rub": 0.0044,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S06",
+      "group": "simple",
+      "question": "Сколько дней в високосном году?",
+      "expect": [
+        "366"
+      ],
+      "note": "Факт-константа.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "366 дней. Високосный год имеет 366 дней, так как в него добавляется один день (29 февраля).",
+        "self_reported": 1.0,
+        "time_ms": 1430,
+        "prompt_tokens": 331,
+        "completion_tokens": 41,
+        "cost_rub": 0.0025,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "В високосном году 366 дней, так как добавляется 29 февраля.",
+        "self_reported": 0.99,
+        "time_ms": 1965,
+        "prompt_tokens": 325,
+        "completion_tokens": 25,
+        "cost_rub": 0.0862,
+        "correct": true
+      },
+      "router": {
+        "answer": "366 дней. Високосный год имеет 366 дней, так как в него добавляется один день (29 февраля).",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2425,
+        "cost_rub": 0.005,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S07",
+      "group": "simple",
+      "question": "Какой химический символ у золота?",
+      "expect": [
+        "\\bAu\\b"
+      ],
+      "note": "Символ элемента.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Au.",
+        "self_reported": 1.0,
+        "time_ms": 594,
+        "prompt_tokens": 330,
+        "completion_tokens": 13,
+        "cost_rub": 0.0022,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Химический символ золота — Au.",
+        "self_reported": 1.0,
+        "time_ms": 1774,
+        "prompt_tokens": 325,
+        "completion_tokens": 17,
+        "cost_rub": 0.0797,
+        "correct": true
+      },
+      "router": {
+        "answer": "Au.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1040,
+        "cost_rub": 0.0044,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "S08",
+      "group": "simple",
+      "question": "Столица Японии?",
+      "expect": [
+        "Токио"
+      ],
+      "note": "Факт, короткий ответ — проверяет, не штрафует ли роутер краткость.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Токио.",
+        "self_reported": 1.0,
+        "time_ms": 1716,
+        "prompt_tokens": 327,
+        "completion_tokens": 15,
+        "cost_rub": 0.0022,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Столица Японии — Токио.",
+        "self_reported": 0.99,
+        "time_ms": 1852,
+        "prompt_tokens": 323,
+        "completion_tokens": 19,
+        "cost_rub": 0.0809,
+        "correct": true
+      },
+      "router": {
+        "answer": "Токио.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1434,
+        "cost_rub": 0.0044,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M01",
+      "group": "medium",
+      "question": "Сколько будет 17 × 23?",
+      "expect": [
+        "391"
+      ],
+      "note": "Умножение двузначных — где мелкие модели начинают ошибаться.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "17 × 23 = 391.\n(17 × 20) + (17 × 3) = 340 + 51 = 391.",
+        "self_reported": 1.0,
+        "time_ms": 6908,
+        "prompt_tokens": 333,
+        "completion_tokens": 55,
+        "cost_rub": 0.0027,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "17 × 23 = 391.",
+        "self_reported": 0.99,
+        "time_ms": 6214,
+        "prompt_tokens": 325,
+        "completion_tokens": 16,
+        "cost_rub": 0.0789,
+        "correct": true
+      },
+      "router": {
+        "answer": "17 × 23 = 391.\n(17 × 20 + 17 × 3 = 340 + 51 = 391)",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 10192,
+        "cost_rub": 0.0054,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M02",
+      "group": "medium",
+      "question": "Сколько секунд в 3 часах 25 минутах?",
+      "expect": [
+        "12\\s?300"
+      ],
+      "note": "Перевод единиц в два действия.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "3 часа 25 минут = (3 * 60) + 25 = 180 + 25 = 205 минут.\n205 минут * 60 секунд/минута = 12300 секунд.",
+        "self_reported": 1.0,
+        "time_ms": 3000,
+        "prompt_tokens": 336,
+        "completion_tokens": 68,
+        "cost_rub": 0.0029,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "3 часа = 3 × 60 = 180 минут.  \n180 минут + 25 минут = 205 минут.  \n205 минут × 60 секунд = 12 300 секунд.",
+        "self_reported": 0.99,
+        "time_ms": 2357,
+        "prompt_tokens": 330,
+        "completion_tokens": 47,
+        "cost_rub": 0.1051,
+        "correct": true
+      },
+      "router": {
+        "answer": "3 часа 25 минут = (3 * 60) + 25 = 180 + 25 = 205 минут.\n205 минут * 60 секунд/минута = 12300 секунд.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2799,
+        "cost_rub": 0.0058,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M03",
+      "group": "medium",
+      "question": "Сколько букв «о» в слове «молокоотсос»?",
+      "expect": [
+        "\\b5\\b"
+      ],
+      "note": "Посимвольный счёт — известная слабость токенизации.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "В слове «молокоотсос» 3 буквы «о».",
+        "self_reported": 1.0,
+        "time_ms": 1214,
+        "prompt_tokens": 341,
+        "completion_tokens": 28,
+        "cost_rub": 0.0024,
+        "correct": false
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "В слове «молокоотсос» 5 букв «о».",
+        "self_reported": 0.99,
+        "time_ms": 2003,
+        "prompt_tokens": 334,
+        "completion_tokens": 25,
+        "cost_rub": 0.088,
+        "correct": true
+      },
+      "router": {
+        "answer": "В слове «молокоотсос» 3 буквы «о».",
+        "correct": false,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": false,
+        "llm_calls": 2,
+        "time_ms": 1368,
+        "cost_rub": 0.0048,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M04",
+      "group": "medium",
+      "question": "Что больше: 9.11 или 9.9?",
+      "expect": [
+        "9[.,]9"
+      ],
+      "note": "Классическая ловушка сравнения десятичных дробей.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "9.9 больше, чем 9.11.",
+        "self_reported": 1.0,
+        "time_ms": 2113,
+        "prompt_tokens": 336,
+        "completion_tokens": 23,
+        "cost_rub": 0.0023,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "9.9 больше, чем 9.11, потому что 9.9 = 9.90, а 9.90 > 9.11.",
+        "self_reported": 0.99,
+        "time_ms": 2149,
+        "prompt_tokens": 329,
+        "completion_tokens": 42,
+        "cost_rub": 0.1008,
+        "correct": true
+      },
+      "router": {
+        "answer": "9.9 больше, чем 9.11.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 3421,
+        "cost_rub": 0.0046,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M05",
+      "group": "medium",
+      "question": "У Марии 4 брата и 3 сестры. Сколько сестёр у её брата Петра?",
+      "expect": [
+        "(?:\\b4\\b|четыре)\\s*сест"
+      ],
+      "note": "Нужно не забыть саму Марию: 3 + 1 = 4. Проверка привязана к слову «сестры», иначе «4 брата» из условия засчиталось бы как верный ответ.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "У Петра 3 сестры. Все братья делят одних и тех же сестер.",
+        "self_reported": 0.99,
+        "time_ms": 1262,
+        "prompt_tokens": 345,
+        "completion_tokens": 31,
+        "cost_rub": 0.0025,
+        "correct": false
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "У Петра столько же сестёр, сколько и у Марии, то есть 3 сестры (включая Марию).",
+        "self_reported": 0.98,
+        "time_ms": 2201,
+        "prompt_tokens": 340,
+        "completion_tokens": 36,
+        "cost_rub": 0.0982,
+        "correct": false
+      },
+      "router": {
+        "answer": "У Петра 3 сестры. Так как Мария — сестра Петра, а у него 3 сестры, то эти 3 сестры общие для всех братьев и сестер.",
+        "correct": false,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 0.99 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 0.99,
+          "self_reported": 0.99,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 0.99 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": false,
+        "llm_calls": 2,
+        "time_ms": 2673,
+        "cost_rub": 0.0054,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M06",
+      "group": "medium",
+      "question": "В каком году была основана компания OpenAI?",
+      "expect": [
+        "2015"
+      ],
+      "note": "Факт, который мелкая модель может перепутать.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Компания OpenAI была основана в 2015 году.",
+        "self_reported": 1.0,
+        "time_ms": 1835,
+        "prompt_tokens": 331,
+        "completion_tokens": 24,
+        "cost_rub": 0.0023,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Компания OpenAI была основана в 2015 году.",
+        "self_reported": 0.99,
+        "time_ms": 2865,
+        "prompt_tokens": 326,
+        "completion_tokens": 20,
+        "cost_rub": 0.0823,
+        "correct": true
+      },
+      "router": {
+        "answer": "Компания OpenAI была основана в 2015 году.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2636,
+        "cost_rub": 0.0046,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M07",
+      "group": "medium",
+      "question": "Переведи на английский: вчера я купил три зелёных яблока",
+      "expect": [
+        "yesterday",
+        "three",
+        "green",
+        "apple"
+      ],
+      "note": "Перевод с сохранением всех смысловых элементов.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Yesterday I bought three green apples.",
+        "self_reported": 1.0,
+        "time_ms": 2791,
+        "prompt_tokens": 340,
+        "completion_tokens": 18,
+        "cost_rub": 0.0023,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Yesterday I bought three green apples.",
+        "self_reported": 0.99,
+        "time_ms": 1934,
+        "prompt_tokens": 334,
+        "completion_tokens": 15,
+        "cost_rub": 0.0799,
+        "correct": true
+      },
+      "router": {
+        "answer": "Yesterday I bought three green apples.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 1123,
+        "cost_rub": 0.0046,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "M08",
+      "group": "medium",
+      "question": "Сколько будет 15% от 840?",
+      "expect": [
+        "\\b126\\b"
+      ],
+      "note": "Проценты в одно действие.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "15% от 840 это (15/100) * 840 = 126.",
+        "self_reported": 1.0,
+        "time_ms": 1860,
+        "prompt_tokens": 335,
+        "completion_tokens": 39,
+        "cost_rub": 0.0025,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "15% от 840 — это 126.",
+        "self_reported": 0.99,
+        "time_ms": 2005,
+        "prompt_tokens": 326,
+        "completion_tokens": 18,
+        "cost_rub": 0.0807,
+        "correct": true
+      },
+      "router": {
+        "answer": "15% от 840 это (15/100) * 840 = 126.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2603,
+        "cost_rub": 0.005,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H01",
+      "group": "hard",
+      "question": "Посчитай пошагово: в корзине 3 коробки по 12 яблок, из них 17 яблок продали, потом добавили ещё 2 коробки по 8 яблок. Сколько яблок в корзине?",
+      "expect": [
+        "\\b35\\b"
+      ],
+      "note": "36 − 17 + 16 = 35. Три действия, ловит и pre-routing.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "1.  Начальное количество яблок: 3 коробки * 12 яблок/коробка = 36 яблок.\n2.  После продажи: 36 яблок - 17 яблок = 19 яблок.\n3.  Добавление яблок: 2 коробки * 8 яблок/коробка = 16 яблок.\n4.  Итого: 19 яблок + 16 яблок = 35 яблок.\n\nОтвет: 35",
+        "self_reported": 0.99,
+        "time_ms": 3381,
+        "prompt_tokens": 381,
+        "completion_tokens": 141,
+        "cost_rub": 0.004,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "1. В начале: 3 коробки × 12 яблок = 36 яблок.\n2. Продали 17 яблок: 36 − 17 = 19 яблок осталось.\n3. Добавили 2 коробки × 8 яблок = 16 яблок.\n4. Итог: 19 + 16 = 35 яблок.\n\nОтвет: в корзине 35 яблок.",
+        "self_reported": 0.99,
+        "time_ms": 2525,
+        "prompt_tokens": 367,
+        "completion_tokens": 94,
+        "cost_rub": 0.1507,
+        "correct": true
+      },
+      "router": {
+        "answer": "1. В корзине 3 коробки по 12 яблок: 3 × 12 = 36 яблок.\n2. Продали 17 яблок: 36 − 17 = 19 яблок осталось.\n3. Добавили 2 коробки по 8 яблок: 2 × 8 = 16 яблок добавили.\n4. Всего стало: 19 + 16 = 35 яблок.\n\nОтвет: 35 яблок в корзине.",
+        "correct": true,
+        "model": "openai/gpt-4.1",
+        "tier": "large",
+        "path": "large",
+        "escalated": true,
+        "escalation_reason": "pre-routing: многошаговость, расчёт в несколько действий",
+        "preroute": {
+          "tier": "large",
+          "score": 2,
+          "reasons": [
+            "многошаговость",
+            "расчёт в несколько действий"
+          ]
+        },
+        "assessment": null,
+        "small_draft_correct": null,
+        "llm_calls": 1,
+        "time_ms": 4442,
+        "cost_rub": 0.1629,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H02",
+      "group": "hard",
+      "question": "Поезд прошёл 240 км со скоростью 80 км/ч, затем 150 км со скоростью 50 км/ч. Сколько часов он был в пути всего?",
+      "expect": [
+        "\\b6\\b"
+      ],
+      "note": "3 + 3 = 6. Маркеров сложности в тексте нет — проверка эскалации по уверенности.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Время в пути на первом участке: 240 км / 80 км/ч = 3 часа.\nВремя в пути на втором участке: 150 км / 50 км/ч = 3 часа.\nОбщее время в пути: 3 часа + 3 часа = 6 часов.",
+        "self_reported": 1.0,
+        "time_ms": 4088,
+        "prompt_tokens": 365,
+        "completion_tokens": 79,
+        "cost_rub": 0.0032,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Время на первом участке: 240 км / 80 км/ч = 3 ч.\nВремя на втором участке: 150 км / 50 км/ч = 3 ч.\nИтого: 3 ч + 3 ч = 6 часов.",
+        "self_reported": 0.99,
+        "time_ms": 2304,
+        "prompt_tokens": 354,
+        "completion_tokens": 63,
+        "cost_rub": 0.1229,
+        "correct": true
+      },
+      "router": {
+        "answer": "Время в пути на первом участке: 240 км / 80 км/ч = 3 часа.\nВремя в пути на втором участке: 150 км / 50 км/ч = 3 часа.\nОбщее время в пути: 3 часа + 3 часа = 6 часов.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 4351,
+        "cost_rub": 0.0064,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H03",
+      "group": "hard",
+      "question": "Три года назад мне было вдвое больше лет, чем моей сестре. Сейчас мне 27. Сколько лет сестре сейчас?",
+      "expect": [
+        "\\b15\\b"
+      ],
+      "note": "24 = 2 × 12, сестре сейчас 15. Обратный счёт во времени.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Три года назад тебе было 27 - 3 = 24 года. Три года назад сестре было вдвое меньше, то есть 24 / 2 = 12 лет. Сейчас сестре 12 + 3 = 15 лет.",
+        "self_reported": 0.99,
+        "time_ms": 2752,
+        "prompt_tokens": 350,
+        "completion_tokens": 68,
+        "cost_rub": 0.003,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Пусть сейчас сестре x лет. Три года назад мне было 24, сестре — x-3. По условию: 24 = 2*(x-3). Решаем: 24 = 2x - 6 → 2x = 30 → x = 15.\n\nСейчас сестре 15 лет.",
+        "self_reported": 0.99,
+        "time_ms": 6130,
+        "prompt_tokens": 345,
+        "completion_tokens": 80,
+        "cost_rub": 0.1349,
+        "correct": true
+      },
+      "router": {
+        "answer": "Три года назад тебе было 27 - 3 = 24 года. Три года назад сестре было вдвое меньше, то есть 24 / 2 = 12 лет. Сейчас сестре 12 + 3 = 15 лет.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 0.99 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 0.99,
+          "self_reported": 0.99,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 0.99 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 3074,
+        "cost_rub": 0.006,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H04",
+      "group": "hard",
+      "question": "Вычисли 128 × 64 − 512 ÷ 8",
+      "expect": [
+        "8\\s?128"
+      ],
+      "note": "8192 − 64 = 8128. Порядок операций плюс крупные числа.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "128 × 64 − 512 ÷ 8 = 8192 − 64 = 8128.",
+        "self_reported": 1.0,
+        "time_ms": 1911,
+        "prompt_tokens": 340,
+        "completion_tokens": 43,
+        "cost_rub": 0.0026,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "128 × 64 = 8192  \n512 ÷ 8 = 64  \n8192 − 64 = 8128\n\nОтвет: 8128.",
+        "self_reported": 0.99,
+        "time_ms": 1744,
+        "prompt_tokens": 332,
+        "completion_tokens": 42,
+        "cost_rub": 0.1014,
+        "correct": true
+      },
+      "router": {
+        "answer": "128 × 64 − 512 ÷ 8 = 8192 − 64 = 8128.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 0.8 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 1,
+          "reasons": [
+            "расчёт в несколько действий"
+          ]
+        },
+        "assessment": {
+          "confidence": 0.8,
+          "self_reported": 1.0,
+          "signals": [
+            "слишком короткий ответ (38 символов) на непростой вопрос"
+          ],
+          "escalate": false,
+          "reason": "confidence 0.8 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 3543,
+        "cost_rub": 0.0052,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H05",
+      "group": "hard",
+      "question": "Назови все простые числа между 90 и 110.",
+      "expect": [
+        "97",
+        "101",
+        "103",
+        "107",
+        "109"
+      ],
+      "note": "Полнота списка: пропуск любого числа — ошибка.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Простые числа между 90 и 110: 97, 101, 103, 107, 109.",
+        "self_reported": 0.95,
+        "time_ms": 3884,
+        "prompt_tokens": 339,
+        "completion_tokens": 48,
+        "cost_rub": 0.0027,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Простые числа между 90 и 110:  97, 101, 103, 107, 109.",
+        "self_reported": 0.98,
+        "time_ms": 3072,
+        "prompt_tokens": 329,
+        "completion_tokens": 35,
+        "cost_rub": 0.0951,
+        "correct": true
+      },
+      "router": {
+        "answer": "Простые числа между 90 и 110: 97, 101, 103, 107, 109.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 0.95 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 0.95,
+          "self_reported": 0.95,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 0.95 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 5801,
+        "cost_rub": 0.0054,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H06",
+      "group": "hard",
+      "question": "Расставь по возрастанию: 0.3, 0.25, 1/3, 2/7",
+      "expect": [
+        "0[.,]25.*2/7.*0[.,]3.*1/3"
+      ],
+      "note": "Нужно сравнить дроби с десятичными: 0.25 < 2/7 < 0.3 < 1/3.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "0.25 < 1/3 < 2/7 < 0.3",
+        "self_reported": 0.95,
+        "time_ms": 2391,
+        "prompt_tokens": 349,
+        "completion_tokens": 30,
+        "cost_rub": 0.0025,
+        "correct": false
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "0.25, 2/7, 0.3, 1/3\n\n0.25 = 0.25; 2/7 ≈ 0.2857; 0.3 = 0.3; 1/3 ≈ 0.3333.",
+        "self_reported": 0.99,
+        "time_ms": 2553,
+        "prompt_tokens": 344,
+        "completion_tokens": 70,
+        "cost_rub": 0.1266,
+        "correct": true
+      },
+      "router": {
+        "answer": "0.25 < 1/3 < 2/7 < 0.3",
+        "correct": false,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 0.95 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 0.95,
+          "self_reported": 0.95,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 0.95 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": false,
+        "llm_calls": 2,
+        "time_ms": 2583,
+        "cost_rub": 0.005,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H07",
+      "group": "hard",
+      "question": "У фермера было 17 овец. Все, кроме девяти, убежали. Сколько овец осталось?",
+      "expect": [
+        "(?:остал|остаётся|ответ)[^.]{0,40}(?:\\b9\\b|девят)|(?:\\b9\\b|девять)\\s*овец"
+      ],
+      "note": "Ловушка на невнимательное чтение: ответ 9, а не 8. Проверка привязана к выводу, иначе «17 − 9 = 8» засчиталось бы как верное.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Осталось 9 овец.",
+        "self_reported": 1.0,
+        "time_ms": 1421,
+        "prompt_tokens": 346,
+        "completion_tokens": 19,
+        "cost_rub": 0.0023,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Осталось 9 овец, потому что все, кроме девяти, убежали.",
+        "self_reported": 1.0,
+        "time_ms": 2690,
+        "prompt_tokens": 341,
+        "completion_tokens": 27,
+        "cost_rub": 0.0911,
+        "correct": true
+      },
+      "router": {
+        "answer": "Осталось 9 овец.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2428,
+        "cost_rub": 0.0046,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "H08",
+      "group": "hard",
+      "question": "Сколько будет 2 в десятой степени плюс 2 в пятой степени?",
+      "expect": [
+        "1\\s?056"
+      ],
+      "note": "1024 + 32 = 1056. Степени по памяти.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "2 в десятой степени равно 1024.\n2 в пятой степени равно 32.\n1024 + 32 = 1056.",
+        "self_reported": 1.0,
+        "time_ms": 4196,
+        "prompt_tokens": 339,
+        "completion_tokens": 50,
+        "cost_rub": 0.0027,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "2 в десятой степени — это 1024, 2 в пятой степени — это 32. 1024 + 32 = 1056.",
+        "self_reported": 0.99,
+        "time_ms": 2467,
+        "prompt_tokens": 333,
+        "completion_tokens": 41,
+        "cost_rub": 0.1008,
+        "correct": true
+      },
+      "router": {
+        "answer": "2 в десятой степени равно 1024.\n2 в пятой степени равно 32.\n1024 + 32 = 1056.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2269,
+        "cost_rub": 0.0054,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "T01",
+      "group": "trap",
+      "question": "Напиши слово «конституция» задом наперёд.",
+      "expect": [
+        "яицутитснок"
+      ],
+      "note": "Посимвольная работа со словом — известная слабость мелких моделей.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "итутиситснок",
+        "self_reported": 1.0,
+        "time_ms": 1513,
+        "prompt_tokens": 337,
+        "completion_tokens": 17,
+        "cost_rub": 0.0023,
+        "correct": false
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "яицуитсутнок",
+        "self_reported": 0.99,
+        "time_ms": 1772,
+        "prompt_tokens": 331,
+        "completion_tokens": 15,
+        "cost_rub": 0.0793,
+        "correct": false
+      },
+      "router": {
+        "answer": "итутиситснок",
+        "correct": false,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": false,
+        "llm_calls": 2,
+        "time_ms": 1957,
+        "cost_rub": 0.0046,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "T02",
+      "group": "trap",
+      "question": "Сколько букв «с» в слове «ассоциация»?",
+      "expect": [
+        "(?:\\b2\\b|две|два)\\s*(?:букв|раз)"
+      ],
+      "note": "Счёт букв: правильный ответ 2.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "В слове «ассоциация» 3 буквы «с».",
+        "self_reported": 1.0,
+        "time_ms": 2582,
+        "prompt_tokens": 339,
+        "completion_tokens": 26,
+        "cost_rub": 0.0024,
+        "correct": false
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "В слове «ассоциация» две буквы «с».",
+        "self_reported": 0.99,
+        "time_ms": 1972,
+        "prompt_tokens": 331,
+        "completion_tokens": 22,
+        "cost_rub": 0.085,
+        "correct": true
+      },
+      "router": {
+        "answer": "В слове «ассоциация» 3 буквы «с».",
+        "correct": false,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": false,
+        "llm_calls": 2,
+        "time_ms": 2853,
+        "cost_rub": 0.0048,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "T03",
+      "group": "trap",
+      "question": "В комнате 4 угла, в каждом углу сидит кошка, напротив каждой кошки сидят 3 кошки. Сколько всего кошек в комнате?",
+      "expect": [
+        "(?:\\b4\\b|четыре)[^.!?]{0,25}кош|кош[^.!?]{0,25}(?:\\b4\\b|четыре)"
+      ],
+      "note": "Ловушка на лишнее умножение: ответ 4, а не 16. Порядок слов свободный — «4 кошки» и «кошек — 4» одинаково верны.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "В комнате 4 кошки. Каждая кошка видит 3 других кошки, что означает, что они сидят напротив друг друга.",
+        "self_reported": 1.0,
+        "time_ms": 1964,
+        "prompt_tokens": 357,
+        "completion_tokens": 42,
+        "cost_rub": 0.0027,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "В каждом углу по одной кошке, всего 4 угла — значит, 4 кошки. Формулировка \"напротив каждой кошки сидят 3 кошки\" просто подтверждает, что каждая кошка видит остальных трёх, но новых кошек не добавляет.\n\nОтвет: 4 кошки.",
+        "self_reported": 0.99,
+        "time_ms": 2475,
+        "prompt_tokens": 352,
+        "completion_tokens": 79,
+        "cost_rub": 0.1355,
+        "correct": true
+      },
+      "router": {
+        "answer": "В комнате всего 4 кошки. Каждая кошка сидит в углу, и напротив каждой кошки находится только одна другая кошка, сидящая в другом углу.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 2854,
+        "cost_rub": 0.0056,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "T04",
+      "group": "trap",
+      "question": "Сколько раз цифра 7 встречается в числах от 1 до 100?",
+      "expect": [
+        "\\b20\\b|двадцать"
+      ],
+      "note": "Нужно не забыть про 77, где семёрка дважды. Число принимается и цифрами, и словом.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Цифра 7 встречается в числах от 1 до 100 следующие разы:\n\n*   В числе 7: 1 раз\n*   В числе 17: 1 раз\n*   В числе 27: 1 раз\n*   В числе 37: 1 раз\n*   В числе 47: 1 раз\n*   В числе 57: 1 раз\n*   В числе 67: 1 раз\n*   В числе 70: 1 раз\n*   В числе 71: 1 раз\n*   В числе 72: 1 раз\n*   В числе 73: 1 раз\n*   В числе 74: 1 раз\n*   В числе 75: 1 раз\n*   В числе 76: 1 раз\n*   В числе 77: 2 раза\n*   В числе 78: 1 раз\n*   В числе 79: 1 раз\n*   В числе 87: 1 раз\n*   В числе 97: 1 раз\n\nИтого: 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 2 + 1 + 1 + 1 + 1 = 20",
+        "self_reported": 0.99,
+        "time_ms": 7421,
+        "prompt_tokens": 342,
+        "completion_tokens": 322,
+        "cost_rub": 0.006,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "Цифра 7 встречается в числах от 1 до 100 двадцать раз: 10 раз на месте единиц (7, 17, ..., 97) и 10 раз на месте десятков (70–79).",
+        "self_reported": 0.98,
+        "time_ms": 1885,
+        "prompt_tokens": 335,
+        "completion_tokens": 58,
+        "cost_rub": 0.115,
+        "correct": true
+      },
+      "router": {
+        "answer": "Цифра 7 встречается в числах от 1 до 100 следующие разы:\n\nВ разряде единиц: 7, 17, 27, 37, 47, 57, 67, 77, 87, 97 - 10 раз.\nВ разряде десятков: 70, 71, 72, 73, 74, 75, 76, 77, 78, 79 - 10 раз.\n\nИтого: 10 + 10 = 20 раз.",
+        "correct": true,
+        "model": "google/gemma-3n-e4b-it",
+        "tier": "small",
+        "path": "small",
+        "escalated": false,
+        "escalation_reason": "confidence 1.0 — ответа дешёвой модели достаточно",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 1.0,
+          "self_reported": 1.0,
+          "signals": [],
+          "escalate": false,
+          "reason": "confidence 1.0 — ответа дешёвой модели достаточно"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 2,
+        "time_ms": 5131,
+        "cost_rub": 0.008,
+        "wasted_rub": 0.0
+      }
+    },
+    {
+      "id": "T05",
+      "group": "trap",
+      "question": "Улитка ползёт по столбу высотой 10 метров: за день поднимается на 3 метра, за ночь сползает на 2. За сколько дней она доберётся до вершины?",
+      "expect": [
+        "(?:\\b8\\b|восемь)\\s*(?:дн|сут)"
+      ],
+      "note": "Классика: последний день сползания уже нет, ответ 8, а не 10.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "Улитка эффективно поднимается на 1 метр в день (3 метра вверх - 2 метра вниз). Чтобы преодолеть 7 метров, ей потребуется 7 дней. В последний день она поднимется на 3 метра и достигнет вершины, не сползет обратно. Итого: 7 дней.",
+        "self_reported": 0.95,
+        "time_ms": 2230,
+        "prompt_tokens": 367,
+        "completion_tokens": 77,
+        "cost_rub": 0.0032,
+        "correct": false
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "За первый день улитка поднимается на 3 метра, за ночь сползает на 2, итого за сутки — 1 метр. Но на последний день, когда улитка достигнет или превысит 10 метров, она уже не будет сползать вниз.\n\nЗа 7 дней улитка поднимется на 7×1 = 7 метров (с учётом ночных сползаний). На 8-й день она поднимется с 7 до 10 метров и достигнет вершины днём, не сползая ночью.\n\nОтвет: 8 дней.",
+        "self_reported": 0.98,
+        "time_ms": 2738,
+        "prompt_tokens": 363,
+        "completion_tokens": 140,
+        "cost_rub": 0.1872,
+        "correct": true
+      },
+      "router": {
+        "answer": "За первый день улитка поднимется на 3 метра, за ночь сползёт на 2 — итого за сутки +1 метр. Но на последний день, когда улитка достигнет или превысит 10 метров, она уже не будет сползать вниз.\n\nЗа 7 дней улитка поднимется на 7×1=7 метров (с учётом ночных сползаний). На 8-й день она поднимется с 7 до 10 метров и достигнет вершины до наступления ночи.\n\nОтвет: 8 дней.",
+        "correct": true,
+        "model": "openai/gpt-4.1",
+        "tier": "large",
+        "path": "small→large",
+        "escalated": true,
+        "escalation_reason": "confidence 0.6 < 0.7: сэмплы дешёвой модели разошлись — итог разошёлся: 10 против 7",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 0.6,
+          "self_reported": 1.0,
+          "signals": [
+            "сэмплы дешёвой модели разошлись — итог разошёлся: 10 против 7"
+          ],
+          "escalate": true,
+          "reason": "confidence 0.6 < 0.7: сэмплы дешёвой модели разошлись — итог разошёлся: 10 против 7"
+        },
+        "small_draft_correct": false,
+        "llm_calls": 3,
+        "time_ms": 8338,
+        "cost_rub": 0.1877,
+        "wasted_rub": 0.0062
+      }
+    },
+    {
+      "id": "T06",
+      "group": "trap",
+      "question": "Если 5 машин делают 5 деталей за 5 минут, сколько минут нужно 100 машинам, чтобы сделать 100 деталей?",
+      "expect": [
+        "(?:\\b5\\b|пять)\\s*минут"
+      ],
+      "note": "Ловушка на пропорцию: ответ 5, а не 100.",
+      "small_only": {
+        "model": "google/gemma-3n-e4b-it",
+        "answer": "100 машинам потребуется 5 минут.\n\nЕсли 5 машин делают 5 деталей за 5 минут, то 1 машина делает 1 деталь за 5 минут. Следовательно, 100 машинам потребуется 5 минут, чтобы сделать 100 деталей.",
+        "self_reported": 1.0,
+        "time_ms": 8611,
+        "prompt_tokens": 353,
+        "completion_tokens": 72,
+        "cost_rub": 0.003,
+        "correct": true
+      },
+      "large_only": {
+        "model": "openai/gpt-4.1",
+        "answer": "5 машин делают 5 деталей за 5 минут, значит 1 машина делает 1 деталь за 5 минут. 100 машин одновременно сделают 100 деталей за те же 5 минут.",
+        "self_reported": 0.99,
+        "time_ms": 2141,
+        "prompt_tokens": 343,
+        "completion_tokens": 49,
+        "cost_rub": 0.1093,
+        "correct": true
+      },
+      "router": {
+        "answer": "5 машин делают 5 деталей за 5 минут, значит, 1 машина делает 1 деталь за 5 минут.\n\n100 машин одновременно сделают 100 деталей за те же 5 минут.",
+        "correct": true,
+        "model": "openai/gpt-4.1",
+        "tier": "large",
+        "path": "small→large",
+        "escalated": true,
+        "escalation_reason": "confidence 0.6 < 0.7: сэмплы дешёвой модели разошлись — итог разошёлся: 5 против 100",
+        "preroute": {
+          "tier": "small",
+          "score": 0,
+          "reasons": []
+        },
+        "assessment": {
+          "confidence": 0.6,
+          "self_reported": 1.0,
+          "signals": [
+            "сэмплы дешёвой модели разошлись — итог разошёлся: 5 против 100"
+          ],
+          "escalate": true,
+          "reason": "confidence 0.6 < 0.7: сэмплы дешёвой модели разошлись — итог разошёлся: 5 против 100"
+        },
+        "small_draft_correct": true,
+        "llm_calls": 3,
+        "time_ms": 4193,
+        "cost_rub": 0.1149,
+        "wasted_rub": 0.0056
+      }
+    }
+  ]
+}
