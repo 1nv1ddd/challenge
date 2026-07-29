@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .agent_constants import TRIAGE_SAMPLES, TRIAGE_TEMPERATURE
+
 
 @dataclass(frozen=True)
 class ChatRequestPayload:
@@ -96,6 +98,33 @@ class RagModesComparePayload:
             top_k=int(body.get("top_k") or 8),
             index_path=ip,
             min_similarity=min_sim,
+        )
+
+
+@dataclass(frozen=True)
+class TriagePayload:
+    provider_name: str
+    model: str
+    text: str
+    samples: int
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> TriagePayload:
+        try:
+            samples = int(body.get("samples") or TRIAGE_SAMPLES)
+        except (TypeError, ValueError):
+            samples = TRIAGE_SAMPLES
+        try:
+            temperature = float(body.get("temperature", TRIAGE_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = TRIAGE_TEMPERATURE
+        return cls(
+            provider_name=str(body.get("provider") or "").strip(),
+            model=str(body.get("model") or "").strip(),
+            text=str(body.get("text") or "").strip(),
+            samples=max(1, min(5, samples)),
+            temperature=temperature,
         )
 
 

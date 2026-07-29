@@ -13,10 +13,12 @@ from .provider_utils import AgentProviderUtilsMixin
 from .rag_context import AgentRagMixin
 from .streaming import AgentStreamingMixin
 from .task_fsm import AgentTaskFsmMixin
+from .triage import AgentTriageMixin
 
 
 class SimpleChatAgent(
     AgentStreamingMixin,
+    AgentTriageMixin,
     AgentContextMixin,
     AgentRagMixin,
     AgentPromptsMixin,
