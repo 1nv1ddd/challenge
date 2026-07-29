@@ -25,6 +25,38 @@ TRIAGE_CONFIDENCE_OK = 0.75
 TRIAGE_CONFIDENCE_UNSURE = 0.45
 TRIAGE_SELFCHECK_BONUS = 0.1
 TRIAGE_SELFCHECK_PENALTY = 0.35
+# Day 8 (advance): routing между моделями — дешёвый тир с эскалацией на сильный.
+ROUTING_SMALL_MODEL = "google/gemma-3n-e4b-it"
+ROUTING_LARGE_MODEL = "openai/gpt-4.1"
+# Прайс RouterAI, ₽ за миллион токенов: (prompt, completion). Тиры отличаются в десятки раз.
+ROUTING_MODEL_PRICES_RUB = {
+    "google/gemma-3n-e4b-it": (6.1, 12.2),
+    "openai/gpt-4.1-nano": (10.1, 40.6),
+    "openai/gpt-4.1-mini": (40.6, 162.3),
+    "openai/gpt-4.1": (202.8, 811.4),
+    "openai/gpt-4o-mini": (15.2, 60.9),
+}
+ROUTING_TEMPERATURE = 0.2
+# Ниже этого confidence ответ дешёвой модели не принимается — идём на сильную.
+ROUTING_ESCALATE_BELOW = 0.7
+# Сколько маркеров сложности в запросе, чтобы не тратить вызов на дешёвую модель.
+ROUTING_PREROUTE_HARD_SCORE = 2
+ROUTING_LONG_QUESTION_CHARS = 400
+ROUTING_MIN_ANSWER_CHARS = 40
+# Уверенность, когда модель не выдала строку CONFIDENCE (контракт нарушен — доверия меньше).
+ROUTING_NO_CONFIDENCE_BASE = 0.5
+# Самосогласованность: сколько раз спросить дешёвую модель (1 — проверка выключена).
+# Нужна потому, что самооценка мелких моделей насыщена: они пишут CONFIDENCE 1.0 и на ошибках.
+ROUTING_CONSISTENCY_SAMPLES = 2
+# Дубль берём при повышенной температуре: на температуре основного ответа выборки почти
+# совпадают, и расхождение — сигнал, которого просто нет.
+ROUTING_CONSISTENCY_TEMPERATURE = 0.8
+ROUTING_CONSISTENCY_JACCARD = 0.5
+ROUTING_DISAGREE_PENALTY = 0.4
+ROUTING_HEDGE_PENALTY = 0.25
+ROUTING_SHORT_PENALTY = 0.2
+ROUTING_TRUNCATED_PENALTY = 0.4
+ROUTING_REFUSAL_PENALTY = 0.6
 INVARIANTS_MAX_ITEMS = 30
 INVARIANT_KEY_MAX_LEN = 80
 INVARIANT_VAL_MAX_LEN = 600

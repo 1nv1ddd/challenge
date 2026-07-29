@@ -73,6 +73,10 @@ class RouterAIProvider(AIProvider):
     name = "routerai"
     models = [
         {"id": "openai/gpt-4o-mini", "label": "GPT-4o Mini — RouterAI"},
+        # Тиры роутинга (День 8): дешёвая и сильная модели, прайс отличается в десятки раз.
+        {"id": "google/gemma-3n-e4b-it", "label": "Gemma 3n E4B — RouterAI (дешёвый тир)"},
+        {"id": "openai/gpt-4.1-nano", "label": "GPT-4.1 Nano — RouterAI"},
+        {"id": "openai/gpt-4.1", "label": "GPT-4.1 — RouterAI (сильный тир)"},
     ]
 
     def __init__(self, api_key: str):
