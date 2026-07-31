@@ -207,6 +207,11 @@ class AgentStreamingMixin:
         from .route_command import detect_route_command, render_route_card
         from .route_command import usage_markdown as route_usage_markdown
 
+        # Day 9 (advance): /intake — письмо-заявка разбирается монолитно или по этапам,
+        # модели этапов задаются константами, модель из UI здесь тоже не участвует.
+        from .intake_command import detect_intake_command, render_intake_card
+        from .intake_command import usage_markdown as intake_usage_markdown
+
         if incoming and incoming[-1].role == "user":
             is_triage, triage_text = detect_triage_command(incoming[-1].content)
             if is_triage:
@@ -225,6 +230,20 @@ class AgentStreamingMixin:
                 result = await self.route_question(provider_name, route_text)
                 yield StreamResult(text=render_route_card(result))
                 yield StreamResult(meta=result.metrics)
+                return
+
+            is_intake, intake_mode, intake_today, letter = detect_intake_command(
+                incoming[-1].content
+            )
+            if is_intake:
+                if not letter:
+                    yield StreamResult(text=intake_usage_markdown())
+                    return
+                intake = await self.parse_intake(
+                    provider_name, letter, mode=intake_mode, today=intake_today
+                )
+                yield StreamResult(text=render_intake_card(intake))
+                yield StreamResult(meta=intake.metrics)
                 return
 
         help_msg: Message | None = None

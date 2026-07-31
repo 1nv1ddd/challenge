@@ -57,6 +57,49 @@ ROUTING_HEDGE_PENALTY = 0.25
 ROUTING_SHORT_PENALTY = 0.2
 ROUTING_TRUNCATED_PENALTY = 0.4
 ROUTING_REFUSAL_PENALTY = 0.6
+# Day 9 (advance): декомпозиция инференса — разбор письма-заявки одним запросом или по этапам.
+# Значение "unknown" во всех перечислениях — единственный способ сказать «в письме этого нет».
+INTAKE_PRODUCTS = ("pipe_steel", "sheet_steel", "rebar", "wire_rope", "fittings", "other", "unknown")
+INTAKE_REGIONS = ("moscow", "spb", "ural", "siberia", "south", "abroad", "unknown")
+INTAKE_PAYMENTS = ("prepay", "postpay_30", "postpay_60", "unknown")
+INTAKE_DECISIONS = ("accept", "clarify", "reject")
+INTAKE_REASONS = (
+    "ok",
+    "missing_fields",
+    "below_min_order",
+    "deadline_unrealistic",
+    "region_not_served",
+    "product_not_in_catalog",
+    "payment_terms_review",
+)
+# Порядок полей в компактном формате этапа 1 — он же порядок строк на вход этапа 2.
+INTAKE_FIELD_KEYS = (
+    "company",
+    "product",
+    "qty_kg",
+    "budget_rub",
+    "deadline",
+    "region",
+    "contact",
+    "payment",
+)
+INTAKE_NUMERIC_FIELDS = ("qty_kg", "budget_rub")
+# Без этих полей заявку нельзя ни принять, ни отклонить — только уточнять.
+INTAKE_REQUIRED_FIELDS = ("product", "qty_kg", "budget_rub", "deadline", "region", "contact")
+INTAKE_MIN_ORDER_RUB = 100_000
+# Минимальный срок поставки по регионам (календарные дни от даты обращения).
+INTAKE_REGION_SLA_DAYS = {"moscow": 3, "spb": 4, "ural": 7, "siberia": 10, "south": 7}
+# Разные модели по этапам: извлечение полей требует аккуратности, enum-решение и письмо — нет.
+INTAKE_STAGE_MODELS = {
+    "normalize": "openai/gpt-4o-mini",
+    "decide": "google/gemma-3n-e4b-it",
+    "compose": "google/gemma-3n-e4b-it",
+}
+INTAKE_MONO_MODEL = "openai/gpt-4.1"
+INTAKE_MODES = ("mono", "staged", "staged_rules")
+INTAKE_TEMPERATURE = 0.1
+INTAKE_MAX_REPAIRS = 1
+INTAKE_REPLY_MAX_WORDS = 70
 INVARIANTS_MAX_ITEMS = 30
 INVARIANT_KEY_MAX_LEN = 80
 INVARIANT_VAL_MAX_LEN = 600
