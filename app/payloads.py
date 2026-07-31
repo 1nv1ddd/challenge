@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from .agent_constants import (
+    INTAKE_MONO_MODEL,
+    INTAKE_STAGE_MODELS,
+    INTAKE_TEMPERATURE,
     ROUTING_LARGE_MODEL,
     ROUTING_SMALL_MODEL,
     ROUTING_TEMPERATURE,
@@ -153,6 +156,44 @@ class RoutePayload:
             question=str(body.get("question") or "").strip(),
             small_model=str(body.get("small_model") or ROUTING_SMALL_MODEL).strip(),
             large_model=str(body.get("large_model") or ROUTING_LARGE_MODEL).strip(),
+            temperature=temperature,
+        )
+
+
+@dataclass(frozen=True)
+class IntakePayload:
+    provider_name: str
+    letter: str
+    mode: str
+    today: str
+    mono_model: str
+    stage_models: dict[str, str]
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> IntakePayload:
+        try:
+            temperature = float(body.get("temperature", INTAKE_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = INTAKE_TEMPERATURE
+        raw_models = body.get("stage_models")
+        # Переопределять можно только известные этапы: чужие ключи молча игнорируем.
+        stage_models = (
+            {
+                str(stage): str(model).strip()
+                for stage, model in raw_models.items()
+                if stage in INTAKE_STAGE_MODELS and str(model).strip()
+            }
+            if isinstance(raw_models, dict)
+            else {}
+        )
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            letter=str(body.get("letter") or "").strip(),
+            mode=str(body.get("mode") or "staged").strip(),
+            today=str(body.get("today") or "").strip(),
+            mono_model=str(body.get("mono_model") or INTAKE_MONO_MODEL).strip(),
+            stage_models=stage_models,
             temperature=temperature,
         )
 

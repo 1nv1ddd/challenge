@@ -34,6 +34,7 @@
 |---|---|---|
 | `POST` | `/api/triage` | Триаж обращения через гейт уверенности (Day 7). Body: `provider`, `model`, `text`, `samples`, `temperature`. Ответ: решение, статус `OK`/`UNSURE`/`FAIL`, confidence, метрики |
 | `POST` | `/api/route` | Ответ через каскад моделей (Day 8). Body: `question`, опционально `provider`, `small_model`, `large_model`, `temperature`. Ответ: `answer`, `tier`, `escalated`, `escalation_reason`, `preroute`, `attempts`, `metrics` |
+| `POST` | `/api/intake` | Разбор письма-заявки (Day 9). Body: `letter`, опционально `mode` (`staged` / `mono` / `staged_rules`), `today` (`YYYY-MM-DD`), `provider`, `mono_model`, `stage_models`, `temperature`. Ответ: `fields`, `decision`, `reply`, `stages`, `metrics`, `ok` |
 
 ## Планировщик и MCP
 
