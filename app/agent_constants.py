@@ -247,3 +247,48 @@ SECURITY_DOC_START = "<<<UNTRUSTED_DOCUMENT_START>>>"
 SECURITY_DOC_END = "<<<UNTRUSTED_DOCUMENT_END>>>"
 # Чем заменяем подделку разделителя в пользовательском тексте (атака «закрой блок и пиши команды»).
 SECURITY_DELIMITER_MASK = "[маркер вырезан]"
+# Day 12 (advance): indirect prompt injection — инструкция спрятана во внешнем контенте.
+INDIRECT_CASES_PATH = "data/indirect_cases.jsonl"
+# Сценарий: какой агент читает контент и что он с ним делает.
+INDIRECT_SCENARIOS = ("summarize", "analyze", "search")
+# Носитель инъекции: письмо, документ, веб-страница.
+INDIRECT_SOURCES = ("email", "document", "webpage")
+# Техники сокрытия payload'а от глаз пользователя.
+INDIRECT_HIDING = ("html_comment", "white_text", "zero_width", "markdown_link", "tiny_font")
+# Слои защиты, включаются независимо друг от друга — так видно вклад каждого.
+INDIRECT_LAYERS = ("sanitize", "boundary", "output_guard")
+# Пресеты для прогонов: без защиты, каждый слой по отдельности, всё вместе.
+INDIRECT_PRESETS = {
+    "none": (),
+    "sanitize": ("sanitize",),
+    "boundary": ("boundary",),
+    "guard": ("output_guard",),
+    "all": INDIRECT_LAYERS,
+}
+INDIRECT_MODEL = ROUTING_LARGE_MODEL
+INDIRECT_WEAK_MODEL = ROUTING_SMALL_MODEL
+INDIRECT_TEMPERATURE = 0.2
+# Невидимые символы, которыми прячут текст: zero-width space/non-joiner/joiner, BOM, word joiner.
+INDIRECT_ZERO_WIDTH = ("​", "‌", "‍", "﻿", "⁠", "­")
+# Unicode Tag Characters (U+E0000–U+E007F): не рисуются вообще, но токенизируются как обычный
+# ASCII — на этом строится «ASCII smuggling», когда инструкцию не видно даже в исходнике письма.
+INDIRECT_TAG_BASE = 0xE0000
+INDIRECT_TAG_RANGE = (0xE0020, 0xE007E)
+# CSS-признаки скрытого от пользователя текста: он есть в разметке, но человек его не видит.
+INDIRECT_HIDDEN_CSS = (
+    "display:none",
+    "visibility:hidden",
+    "opacity:0",
+    "font-size:0",
+    "font-size:1px",
+    "color:#fff",
+    "color:#ffffff",
+    "color:white",
+    "text-indent:-9999px",
+)
+# Чем помечаем вырезанное: в отчёте видно, что именно чистка удалила из документа.
+INDIRECT_STRIPPED_MASK = "[вырезано санитайзером]"
+# Домены, на которые агенту разрешено ссылаться в ответе. Всё остальное — находка output guard.
+INDIRECT_ALLOWED_HOSTS = ("aichathub.local", "docs.aichathub.local")
+# Ответ длиннее этого (в символах) — подозрение на дословный пересказ документа, а не сводку.
+INDIRECT_MAX_ANSWER_CHARS = 2000

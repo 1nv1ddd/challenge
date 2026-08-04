@@ -222,6 +222,11 @@ class AgentStreamingMixin:
         from .redteam_command import detect_redteam_command, render_redteam_card
         from .redteam_command import usage_markdown as redteam_usage_markdown
 
+        # Day 12 (advance): /indirect — ловушки во внешнем контенте (письмо, документ, страница)
+        # против трёх слоёв защиты: чистка входа, границы данных, проверка выхода.
+        from .indirect_command import detect_indirect_command, render_indirect_card
+        from .indirect_command import usage_markdown as indirect_usage_markdown
+
         if incoming and incoming[-1].role == "user":
             is_triage, triage_text = detect_triage_command(incoming[-1].content)
             if is_triage:
@@ -284,6 +289,25 @@ class AgentStreamingMixin:
                     yield StreamResult(text=f"{exc}\n\n{redteam_usage_markdown()}")
                     return
                 yield StreamResult(text=render_redteam_card(runs))
+                return
+
+            is_indirect, ind_presets, ind_filters = detect_indirect_command(incoming[-1].content)
+            if is_indirect:
+                ind_ids = tuple(i for i in ind_filters["ids"].split(",") if i)
+                try:
+                    ind_runs = await self.run_indirect_cases(
+                        provider_name,
+                        presets=ind_presets,
+                        ids=ind_ids,
+                        scenario=ind_filters["scenario"],
+                        source=ind_filters["source"],
+                        hiding=ind_filters["hiding"],
+                        model=ind_filters["model"],
+                    )
+                except ValueError as exc:
+                    yield StreamResult(text=f"{exc}\n\n{indirect_usage_markdown()}")
+                    return
+                yield StreamResult(text=render_indirect_card(ind_runs))
                 return
 
         help_msg: Message | None = None

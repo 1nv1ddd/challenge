@@ -6,6 +6,9 @@ from dataclasses import dataclass
 from typing import Any
 
 from .agent_constants import (
+    INDIRECT_MODEL,
+    INDIRECT_PRESETS,
+    INDIRECT_TEMPERATURE,
     INTAKE_MONO_MODEL,
     INTAKE_STAGE_MODELS,
     INTAKE_TEMPERATURE,
@@ -223,6 +226,48 @@ class IntentPayload:
             text=str(body.get("text") or "").strip(),
             strategy=str(body.get("strategy") or MICRO_DEFAULT_STRATEGY).strip(),
             llm_model=str(body.get("llm_model") or MICRO_LLM_MODEL).strip(),
+            temperature=temperature,
+        )
+
+
+@dataclass(frozen=True)
+class IndirectPayload:
+    provider_name: str
+    presets: tuple[str, ...]
+    ids: tuple[str, ...]
+    scenario: str
+    source: str
+    hiding: str
+    model: str
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> IndirectPayload:
+        try:
+            temperature = float(body.get("temperature", INDIRECT_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = INDIRECT_TEMPERATURE
+        raw_presets = body.get("presets")
+        # Порядок пресетов фиксируем константой: в отчёте «без защиты» всегда идёт первым.
+        presets = (
+            tuple(p for p in INDIRECT_PRESETS if p in set(map(str, raw_presets)))
+            if isinstance(raw_presets, list) and raw_presets
+            else ("none", "all")
+        )
+        raw_ids = body.get("ids")
+        ids = (
+            tuple(str(i).strip() for i in raw_ids if str(i).strip())
+            if isinstance(raw_ids, list)
+            else ()
+        )
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            presets=presets or ("none", "all"),
+            ids=ids,
+            scenario=str(body.get("scenario") or "").strip(),
+            source=str(body.get("source") or "").strip(),
+            hiding=str(body.get("hiding") or "").strip(),
+            model=str(body.get("model") or INDIRECT_MODEL).strip(),
             temperature=temperature,
         )
 

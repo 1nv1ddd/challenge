@@ -44,6 +44,8 @@
 |---|---|---|
 | `POST` | `/api/redteam` | Прогон корпуса prompt injection по версиям system-промпта (Day 11). Body: опционально `versions` (`["v1","v2"]`), `ids`, `target` (`bank` / `support`), `vector` (`direct` / `indirect` / `jailbreak`), `technique`, `model`, `provider`, `temperature`. Ответ: `runs` (по версии: `broken`, `held`, `break_rate`, `by_vector`, вердикты с сигналами) и `diff` (`fixed` / `still_broken` / `regressed`) |
 | `GET` | `/api/redteam/corpus` | Корпус инъекций с классификацией: вектор, техника, цель, источник и разбор «почему работает / как защититься» |
+| `POST` | `/api/indirect` | Прогон ловушек непрямой инъекции по наборам слоёв защиты (Day 12). Body: опционально `presets` (`none` / `sanitize` / `boundary` / `guard` / `all`), `ids`, `scenario` (`summarize` / `analyze` / `search`), `source` (`email` / `document` / `webpage`), `hiding`, `model`, `provider`, `temperature`. Ответ: `runs` (по пресету: `injected`, `blocked`, `broke_usefulness`, результаты с находками guard) и `effect` (`fixed` / `still_injected` / `usefulness_lost`) |
+| `GET` | `/api/indirect/corpus` | Корпус ловушек: носитель, техника сокрытия, сценарий агента, длина документа против видимой части и разбор каждой |
 
 ## Планировщик и MCP
 

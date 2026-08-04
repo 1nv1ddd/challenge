@@ -12,6 +12,7 @@ from .memory_branches import AgentMemoryBranchesMixin
 from .normalize import AgentStateMixin
 from .prompts import AgentPromptsMixin
 from .provider_utils import AgentProviderUtilsMixin
+from .indirect import AgentIndirectMixin
 from .rag_context import AgentRagMixin
 from .routing import AgentRoutingMixin
 from .security import AgentSecurityMixin
@@ -27,6 +28,7 @@ class SimpleChatAgent(
     AgentIntakeMixin,
     AgentIntentMixin,
     AgentSecurityMixin,
+    AgentIndirectMixin,
     AgentContextMixin,
     AgentRagMixin,
     AgentPromptsMixin,
