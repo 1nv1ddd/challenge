@@ -9,9 +9,15 @@ from .agent_constants import (
     INTAKE_MONO_MODEL,
     INTAKE_STAGE_MODELS,
     INTAKE_TEMPERATURE,
+    MICRO_DEFAULT_STRATEGY,
+    MICRO_LLM_MODEL,
+    MICRO_TEMPERATURE,
     ROUTING_LARGE_MODEL,
     ROUTING_SMALL_MODEL,
     ROUTING_TEMPERATURE,
+    SECURITY_MODEL,
+    SECURITY_PROMPT_VERSIONS,
+    SECURITY_TEMPERATURE,
     TRIAGE_SAMPLES,
     TRIAGE_TEMPERATURE,
 )
@@ -194,6 +200,71 @@ class IntakePayload:
             today=str(body.get("today") or "").strip(),
             mono_model=str(body.get("mono_model") or INTAKE_MONO_MODEL).strip(),
             stage_models=stage_models,
+            temperature=temperature,
+        )
+
+
+@dataclass(frozen=True)
+class IntentPayload:
+    provider_name: str
+    text: str
+    strategy: str
+    llm_model: str
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> IntentPayload:
+        try:
+            temperature = float(body.get("temperature", MICRO_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = MICRO_TEMPERATURE
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            text=str(body.get("text") or "").strip(),
+            strategy=str(body.get("strategy") or MICRO_DEFAULT_STRATEGY).strip(),
+            llm_model=str(body.get("llm_model") or MICRO_LLM_MODEL).strip(),
+            temperature=temperature,
+        )
+
+
+@dataclass(frozen=True)
+class RedteamPayload:
+    provider_name: str
+    versions: tuple[str, ...]
+    ids: tuple[str, ...]
+    target: str
+    vector: str
+    technique: str
+    model: str
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> RedteamPayload:
+        try:
+            temperature = float(body.get("temperature", SECURITY_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = SECURITY_TEMPERATURE
+        raw_versions = body.get("versions")
+        # Порядок версий фиксируем константой: в отчёте v1 всегда идёт перед v2.
+        versions = (
+            tuple(v for v in SECURITY_PROMPT_VERSIONS if v in set(map(str, raw_versions)))
+            if isinstance(raw_versions, list) and raw_versions
+            else SECURITY_PROMPT_VERSIONS
+        )
+        raw_ids = body.get("ids")
+        ids = (
+            tuple(str(i).strip() for i in raw_ids if str(i).strip())
+            if isinstance(raw_ids, list)
+            else ()
+        )
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            versions=versions or SECURITY_PROMPT_VERSIONS,
+            ids=ids,
+            target=str(body.get("target") or "").strip(),
+            vector=str(body.get("vector") or "").strip(),
+            technique=str(body.get("technique") or "").strip(),
+            model=str(body.get("model") or SECURITY_MODEL).strip(),
             temperature=temperature,
         )
 

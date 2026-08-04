@@ -7,12 +7,14 @@ from ..providers import AIProvider
 from .context import AgentContextMixin
 from .facts_wm import AgentFactsMixin
 from .intake import AgentIntakeMixin
+from .intent import AgentIntentMixin
 from .memory_branches import AgentMemoryBranchesMixin
 from .normalize import AgentStateMixin
 from .prompts import AgentPromptsMixin
 from .provider_utils import AgentProviderUtilsMixin
 from .rag_context import AgentRagMixin
 from .routing import AgentRoutingMixin
+from .security import AgentSecurityMixin
 from .streaming import AgentStreamingMixin
 from .task_fsm import AgentTaskFsmMixin
 from .triage import AgentTriageMixin
@@ -23,6 +25,8 @@ class SimpleChatAgent(
     AgentTriageMixin,
     AgentRoutingMixin,
     AgentIntakeMixin,
+    AgentIntentMixin,
+    AgentSecurityMixin,
     AgentContextMixin,
     AgentRagMixin,
     AgentPromptsMixin,

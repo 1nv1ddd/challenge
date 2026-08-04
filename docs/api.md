@@ -35,6 +35,15 @@
 | `POST` | `/api/triage` | Триаж обращения через гейт уверенности (Day 7). Body: `provider`, `model`, `text`, `samples`, `temperature`. Ответ: решение, статус `OK`/`UNSURE`/`FAIL`, confidence, метрики |
 | `POST` | `/api/route` | Ответ через каскад моделей (Day 8). Body: `question`, опционально `provider`, `small_model`, `large_model`, `temperature`. Ответ: `answer`, `tier`, `escalated`, `escalation_reason`, `preroute`, `attempts`, `metrics` |
 | `POST` | `/api/intake` | Разбор письма-заявки (Day 9). Body: `letter`, опционально `mode` (`staged` / `mono` / `staged_rules`), `today` (`YYYY-MM-DD`), `provider`, `mono_model`, `stage_models`, `temperature`. Ответ: `fields`, `decision`, `reply`, `stages`, `metrics`, `ok` |
+| `POST` | `/api/intent` | Классификация интента обращения через micro-model с fallback на LLM (Day 10). Body: `text`, опционально `strategy` (`micro_embed_first` / `micro_tfidf_first` / `micro_only` / `llm_only`), `provider`, `llm_model`, `temperature`. Ответ: `label`, `source`, `micro` (score, статус, соседи), `llm`, `metrics` |
+| `GET` | `/api/intent/bank` | Состав банка примеров уровня 1: сколько примеров на метку, известные метки и стратегии |
+
+## Безопасность промптов
+
+| Метод | Путь | Что |
+|---|---|---|
+| `POST` | `/api/redteam` | Прогон корпуса prompt injection по версиям system-промпта (Day 11). Body: опционально `versions` (`["v1","v2"]`), `ids`, `target` (`bank` / `support`), `vector` (`direct` / `indirect` / `jailbreak`), `technique`, `model`, `provider`, `temperature`. Ответ: `runs` (по версии: `broken`, `held`, `break_rate`, `by_vector`, вердикты с сигналами) и `diff` (`fixed` / `still_broken` / `regressed`) |
+| `GET` | `/api/redteam/corpus` | Корпус инъекций с классификацией: вектор, техника, цель, источник и разбор «почему работает / как защититься» |
 
 ## Планировщик и MCP
 

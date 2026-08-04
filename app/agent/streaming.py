@@ -212,6 +212,16 @@ class AgentStreamingMixin:
         from .intake_command import detect_intake_command, render_intake_card
         from .intake_command import usage_markdown as intake_usage_markdown
 
+        # Day 10 (advance): /intent — обращение сначала уходит на micro-model, большая модель
+        # включается только если уровень 1 вернул UNSURE.
+        from .intent_command import detect_intent_command, render_intent_card
+        from .intent_command import usage_markdown as intent_usage_markdown
+
+        # Day 11 (advance): /redteam — корпус инъекций против наивной и защищённой версии
+        # system-промпта. Модель из UI не участвует: версия промпта важнее, чем чем её атакуют.
+        from .redteam_command import detect_redteam_command, render_redteam_card
+        from .redteam_command import usage_markdown as redteam_usage_markdown
+
         if incoming and incoming[-1].role == "user":
             is_triage, triage_text = detect_triage_command(incoming[-1].content)
             if is_triage:
@@ -244,6 +254,36 @@ class AgentStreamingMixin:
                 )
                 yield StreamResult(text=render_intake_card(intake))
                 yield StreamResult(meta=intake.metrics)
+                return
+
+            is_intent, intent_strategy, intent_text = detect_intent_command(incoming[-1].content)
+            if is_intent:
+                if not intent_text:
+                    yield StreamResult(text=intent_usage_markdown())
+                    return
+                intent = await self.classify_intent(
+                    provider_name, intent_text, strategy=intent_strategy
+                )
+                yield StreamResult(text=render_intent_card(intent))
+                yield StreamResult(meta=intent.metrics)
+                return
+
+            is_redteam, rt_versions, rt_filters = detect_redteam_command(incoming[-1].content)
+            if is_redteam:
+                ids = tuple(i for i in rt_filters["ids"].split(",") if i)
+                try:
+                    runs = await self.redteam_prompts(
+                        provider_name,
+                        versions=rt_versions,
+                        ids=ids,
+                        target=rt_filters["target"],
+                        vector=rt_filters["vector"],
+                        model=rt_filters["model"],
+                    )
+                except ValueError as exc:
+                    yield StreamResult(text=f"{exc}\n\n{redteam_usage_markdown()}")
+                    return
+                yield StreamResult(text=render_redteam_card(runs))
                 return
 
         help_msg: Message | None = None

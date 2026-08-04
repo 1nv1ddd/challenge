@@ -8,6 +8,8 @@ from .lifespan import lifespan
 from .mcp_panel import router as mcp_router
 from .routers.hub import router as hub_router
 from .routers.intake import router as intake_router
+from .routers.micro import router as intent_router
+from .routers.redteam import router as redteam_router
 from .routers.routing import router as routing_router
 from .routers.triage import router as triage_router
 from .scheduler_routes import router as scheduler_router
@@ -18,6 +20,8 @@ app.include_router(scheduler_router)
 app.include_router(triage_router)
 app.include_router(routing_router)
 app.include_router(intake_router)
+app.include_router(intent_router)
+app.include_router(redteam_router)
 app.include_router(hub_router)
 
 if STATIC_DIR.exists():
