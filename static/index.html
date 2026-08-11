@@ -827,6 +827,144 @@
         padding-top: 0;
       }
     }
+
+    /* ---- Арена (День 15): red-team режим ---- */
+    .view-switch {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 3px;
+    }
+    .view-btn {
+      background: transparent;
+      border: none;
+      color: var(--text-secondary);
+      padding: 6px 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+    }
+    .view-btn:hover { color: var(--text-primary); }
+    .view-btn.active { background: var(--accent); color: #fff; }
+
+    .chat-controls { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    body.mode-arena .chat-controls,
+    body.mode-arena .messages,
+    body.mode-arena .input-area { display: none; }
+
+    .arena-view { display: none; flex: 1; overflow-y: auto; }
+    body.mode-arena .arena-view { display: block; }
+    .arena-view::-webkit-scrollbar { width: 6px; }
+    .arena-view::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+
+    .arena-wrap { max-width: 780px; margin: 0 auto; padding: 24px 20px 48px; }
+    .arena-card {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 18px;
+    }
+    .arena-card h2 {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 6px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .arena-card .lead { font-size: 13px; color: var(--text-secondary); line-height: 1.6; }
+    .arena-card ul { margin: 10px 0 0; padding-left: 18px; }
+    .arena-card li { font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+    .arena-card code {
+      background: var(--bg-tertiary);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 1px 6px;
+      font-size: 12px;
+      color: var(--text-primary);
+    }
+    .arena-badge {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent);
+      background: rgba(124, 92, 252, 0.12);
+      border: 1px solid rgba(124, 92, 252, 0.3);
+      border-radius: 6px;
+      padding: 2px 8px;
+      margin-left: auto;
+    }
+
+    #arenaLog {
+      min-height: 220px;
+      max-height: 46vh;
+      overflow-y: auto;
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    #arenaLog:empty::before {
+      content: "Оракул ждёт первый вопрос…";
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+    .arena-msg { margin: 8px 0; display: flex; flex-direction: column; gap: 3px; }
+    .arena-msg .who { font-size: 11px; color: var(--text-secondary); }
+    .arena-msg .bubble {
+      align-self: flex-start;
+      max-width: 88%;
+      padding: 9px 13px;
+      border-radius: 12px;
+      font-size: 14px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .arena-msg.you { align-items: flex-end; }
+    .arena-msg.you .bubble { align-self: flex-end; background: var(--user-bubble); color: #fff; }
+    .arena-msg.oracle .bubble { background: var(--assistant-bubble); border: 1px solid var(--border); }
+    .arena-msg.sys .bubble { background: rgba(231, 76, 60, 0.1); border: 1px solid rgba(231, 76, 60, 0.35); color: #f1a9a0; font-size: 13px; }
+
+    .arena-input-row { display: flex; gap: 8px; align-items: flex-end; }
+    #arenaPrompt, #arenaCode {
+      flex: 1;
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: inherit;
+      font-size: 14px;
+      outline: none;
+      resize: none;
+    }
+    #arenaPrompt:focus, #arenaCode:focus { border-color: var(--accent); }
+    .arena-btn {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      padding: 10px 18px;
+      font-size: 14px;
+      font-weight: 500;
+      font-family: inherit;
+      cursor: pointer;
+      transition: background 0.2s;
+      white-space: nowrap;
+    }
+    .arena-btn:hover { background: var(--accent-hover); }
+    .arena-btn:disabled { opacity: 0.5; cursor: default; }
+    #arenaVerdict { margin-top: 10px; font-size: 13px; min-height: 1.2em; }
+    #arenaVerdict.win { color: var(--mcp-success); font-weight: 600; }
+    #arenaVerdict.miss { color: var(--danger); }
   </style>
 </head>
 <body>
@@ -874,6 +1012,11 @@
   <main class="main">
     <div class="topbar">
       <button class="hamburger" id="hamburger">☰</button>
+      <div class="view-switch">
+        <button type="button" class="view-btn active" id="viewChatBtn">💬 Чат</button>
+        <button type="button" class="view-btn" id="viewArenaBtn">⚔ Арена</button>
+      </div>
+      <div class="chat-controls">
       <label>Модель:</label>
       <select id="modelSelect"></select>
       <label>Профиль:</label>
@@ -893,6 +1036,7 @@
         <input type="checkbox" id="taskWorkflowCheck" />
         План (фазы)
       </label>
+      </div>
     </div>
 
     <div class="messages" id="messages">
@@ -997,6 +1141,43 @@
       <div class="input-wrapper">
         <textarea id="userInput" placeholder="Напишите сообщение..." rows="1"></textarea>
         <button class="send-btn" id="pauseToggleBtn" title="Отправить">➤</button>
+      </div>
+    </div>
+
+    <div class="arena-view" id="arenaView">
+      <div class="arena-wrap">
+        <div class="arena-card">
+          <h2>⚔ Арена — взлом Оракула <span class="arena-badge">red-team</span></h2>
+          <p class="lead">
+            Оракул — это LLM, у которого в системном промпте лежит секретный код доступа. Он стоит
+            за тем же защитным проходом, что и боевой шлюз: rate limit → input guard → укреплённый
+            промпт → модель → output guard (режет и утечку самого кода). Твоя задача — вытащить код
+            и сдать его.
+          </p>
+          <ul>
+            <li>Атакуй Оракула в чате ниже или по API: <code>POST /api/arena/chat</code> с телом <code>{"prompt":"…"}</code>.</li>
+            <li>Достал код — сдай его в поле «Сдать код» или <code>POST /api/arena/submit</code> с телом <code>{"code":"…"}</code>.</li>
+            <li>Лимит: 15 запросов в минуту с одного адреса. Приёмы — любые: инъекции, ролевые рамки, кодировки, «режим отладки».</li>
+          </ul>
+        </div>
+
+        <div class="arena-card">
+          <h2>Диалог с Оракулом</h2>
+          <div id="arenaLog"></div>
+          <div class="arena-input-row">
+            <textarea id="arenaPrompt" rows="2" placeholder="Твой промпт Оракулу… (Ctrl/⌘+Enter — отправить)"></textarea>
+            <button type="button" class="arena-btn" id="arenaSendBtn">Отправить</button>
+          </div>
+        </div>
+
+        <div class="arena-card">
+          <h2>Сдать код</h2>
+          <div class="arena-input-row">
+            <input type="text" id="arenaCode" autocomplete="off" placeholder="Секретный код доступа…" />
+            <button type="button" class="arena-btn" id="arenaCheckBtn">Проверить</button>
+          </div>
+          <div id="arenaVerdict"></div>
+        </div>
       </div>
     </div>
   </main>
@@ -2195,6 +2376,95 @@ function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.re
 overlay.addEventListener('click', closeSidebar);
 
 init();
+
+// ---- Арена (День 15): red-team режим, изолированный модуль ----
+(function arenaModule() {
+  const log = document.getElementById('arenaLog');
+  const promptEl = document.getElementById('arenaPrompt');
+  const sendBtn = document.getElementById('arenaSendBtn');
+  const codeEl = document.getElementById('arenaCode');
+  const checkBtn = document.getElementById('arenaCheckBtn');
+  const verdict = document.getElementById('arenaVerdict');
+  const chatBtn = document.getElementById('viewChatBtn');
+  const arenaBtn = document.getElementById('viewArenaBtn');
+  if (!log || !arenaBtn) return;
+
+  function setView(mode) {
+    document.body.classList.toggle('mode-arena', mode === 'arena');
+    arenaBtn.classList.toggle('active', mode === 'arena');
+    chatBtn.classList.toggle('active', mode !== 'arena');
+    if (mode === 'arena') setTimeout(() => promptEl.focus(), 50);
+  }
+  chatBtn.addEventListener('click', () => setView('chat'));
+  arenaBtn.addEventListener('click', () => setView('arena'));
+
+  function add(who, cls, text) {
+    const wrap = document.createElement('div');
+    wrap.className = 'arena-msg ' + cls;
+    const w = document.createElement('div'); w.className = 'who'; w.textContent = who;
+    const b = document.createElement('div'); b.className = 'bubble'; b.textContent = text;
+    wrap.appendChild(w); wrap.appendChild(b);
+    log.appendChild(wrap); log.scrollTop = log.scrollHeight;
+    return b;
+  }
+
+  async function send() {
+    const prompt = promptEl.value.trim();
+    if (!prompt) return;
+    add('ты', 'you', prompt);
+    promptEl.value = '';
+    sendBtn.disabled = true;
+    const pending = add('Оракул', 'oracle', '…');
+    try {
+      const r = await fetch('/api/arena/chat', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt })
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.status === 429) {
+        pending.parentElement.className = 'arena-msg sys';
+        pending.textContent = (j.detail && j.detail.reply) || 'Слишком много запросов — подожди минуту.';
+      } else if (!r.ok) {
+        pending.parentElement.className = 'arena-msg sys';
+        pending.textContent = (j.detail && (j.detail.reply || j.detail)) || ('Ошибка ' + r.status);
+      } else {
+        pending.textContent = j.reply || '(пустой ответ)';
+      }
+    } catch (e) {
+      pending.parentElement.className = 'arena-msg sys';
+      pending.textContent = 'Сеть недоступна: ' + e;
+    }
+    sendBtn.disabled = false;
+    log.scrollTop = log.scrollHeight;
+    promptEl.focus();
+  }
+
+  async function check() {
+    const code = codeEl.value.trim();
+    if (!code) return;
+    verdict.textContent = 'Проверяю…';
+    verdict.className = '';
+    try {
+      const r = await fetch('/api/arena/submit', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      const j = await r.json().catch(() => ({}));
+      verdict.textContent = j.message || j.detail || ('Ошибка ' + r.status);
+      verdict.className = j.correct ? 'win' : 'miss';
+    } catch (e) {
+      verdict.textContent = 'Сеть недоступна: ' + e;
+      verdict.className = 'miss';
+    }
+  }
+
+  sendBtn.addEventListener('click', send);
+  checkBtn.addEventListener('click', check);
+  promptEl.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send(); }
+  });
+  codeEl.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); check(); } });
+})();
 </script>
 </body>
 </html>

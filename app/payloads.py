@@ -6,7 +6,15 @@ from dataclasses import dataclass
 from typing import Any
 
 from .agent_constants import (
+    CTF_MODEL,
+    GATEWAY_DEFAULT_MODE,
+    GATEWAY_MODEL,
+    GATEWAY_MODES,
+    GATEWAY_TEMPERATURE,
     INDIRECT_MODEL,
+    LOOP_GEN_MODEL,
+    LOOP_MAX_ATTEMPTS,
+    LOOP_REVIEW_MODEL,
     INDIRECT_PRESETS,
     INDIRECT_TEMPERATURE,
     INTAKE_MONO_MODEL,
@@ -311,6 +319,106 @@ class RedteamPayload:
             technique=str(body.get("technique") or "").strip(),
             model=str(body.get("model") or SECURITY_MODEL).strip(),
             temperature=temperature,
+        )
+
+
+@dataclass(frozen=True)
+class GatewayPayload:
+    provider_name: str
+    model: str
+    prompt: str
+    mode: str
+    temperature: float
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> GatewayPayload:
+        try:
+            temperature = float(body.get("temperature", GATEWAY_TEMPERATURE))
+        except (TypeError, ValueError):
+            temperature = GATEWAY_TEMPERATURE
+        # Совместимость с OpenAI-подобными клиентами: промпт можно прислать и списком сообщений.
+        prompt = _last_user_prompt(body)
+        mode = str(body.get("mode") or GATEWAY_DEFAULT_MODE).strip()
+        if mode not in GATEWAY_MODES:
+            raise ValueError(
+                f"Неизвестный режим guard: {mode!r}; доступны: {', '.join(GATEWAY_MODES)}."
+            )
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            model=str(body.get("model") or GATEWAY_MODEL).strip(),
+            prompt=prompt,
+            mode=mode,
+            temperature=temperature,
+        )
+
+
+def _last_user_prompt(body: dict[str, Any]) -> str:
+    """Промпт из тела: поле `prompt`, а если пусто — последнее user-сообщение OpenAI-формата."""
+    prompt = str(body.get("prompt") or "")
+    if prompt.strip():
+        return prompt
+    raw_msgs = body.get("messages")
+    if isinstance(raw_msgs, list):
+        users = [
+            str(m.get("content") or "")
+            for m in raw_msgs
+            if isinstance(m, dict) and m.get("role") == "user"
+        ]
+        return users[-1] if users else ""
+    return prompt
+
+
+@dataclass(frozen=True)
+class ArenaChatPayload:
+    provider_name: str
+    model: str
+    prompt: str
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> ArenaChatPayload:
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            model=str(body.get("model") or CTF_MODEL).strip(),
+            prompt=_last_user_prompt(body),
+        )
+
+
+@dataclass(frozen=True)
+class ArenaSubmitPayload:
+    code: str
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> ArenaSubmitPayload:
+        return cls(code=str(body.get("code") or "").strip())
+
+
+@dataclass(frozen=True)
+class LoopPayload:
+    provider_name: str
+    ids: tuple[str, ...]
+    gen_model: str
+    review_model: str
+    max_attempts: int
+
+    @classmethod
+    def from_body(cls, body: dict[str, Any]) -> LoopPayload:
+        raw_ids = body.get("ids")
+        ids = (
+            tuple(str(i).strip() for i in raw_ids if str(i).strip())
+            if isinstance(raw_ids, list)
+            else ()
+        )
+        try:
+            attempts = int(body.get("max_attempts", LOOP_MAX_ATTEMPTS))
+        except (TypeError, ValueError):
+            attempts = LOOP_MAX_ATTEMPTS
+        return cls(
+            provider_name=str(body.get("provider") or "routerai").strip(),
+            ids=ids,
+            gen_model=str(body.get("gen_model") or LOOP_GEN_MODEL).strip(),
+            review_model=str(body.get("review_model") or LOOP_REVIEW_MODEL).strip(),
+            # Верхнюю границу держим руками: цикл платный, а тело запроса приходит извне.
+            max_attempts=max(1, min(attempts, LOOP_MAX_ATTEMPTS)),
         )
 
 

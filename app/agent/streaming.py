@@ -227,6 +227,21 @@ class AgentStreamingMixin:
         from .indirect_command import detect_indirect_command, render_indirect_card
         from .indirect_command import usage_markdown as indirect_usage_markdown
 
+        # Day 13 (advance): /gateway — промпт идёт через прокси с input/output guard, лимитом
+        # и аудитом. Модель из UI не участвует: шлюз ходит в свою модель из констант.
+        from .gateway_command import (
+            detect_gateway_command,
+            render_audit_card,
+            render_gateway_card,
+            render_selftest_card,
+        )
+        from .gateway_command import usage_markdown as gateway_usage_markdown
+
+        # Day 14 (advance): /loop — execution loop с security step; генерация и ревью идут
+        # через тот же шлюз, модели этапов задаются константами цикла.
+        from .loop_command import detect_loop_command, render_loop_card, render_tasks_card
+        from .loop_command import usage_markdown as loop_usage_markdown
+
         if incoming and incoming[-1].role == "user":
             is_triage, triage_text = detect_triage_command(incoming[-1].content)
             if is_triage:
@@ -308,6 +323,44 @@ class AgentStreamingMixin:
                     yield StreamResult(text=f"{exc}\n\n{indirect_usage_markdown()}")
                     return
                 yield StreamResult(text=render_indirect_card(ind_runs))
+                return
+
+            is_gateway, gw_sub, gw_mode, gw_prompt = detect_gateway_command(incoming[-1].content)
+            if is_gateway:
+                if gw_sub == "audit":
+                    yield StreamResult(text=render_audit_card())
+                    return
+                if gw_sub == "selftest":
+                    gw_ids = tuple(i for i in gw_prompt.split() if i)
+                    try:
+                        yield StreamResult(text=render_selftest_card(self.gateway_selftest(gw_ids)))
+                    except ValueError as exc:
+                        yield StreamResult(text=f"{exc}\n\n{gateway_usage_markdown()}")
+                    return
+                if not gw_prompt:
+                    yield StreamResult(text=gateway_usage_markdown())
+                    return
+                try:
+                    gw_result = await self.gateway_request(
+                        provider_name, gw_prompt, mode=gw_mode, client_ip="web-chat"
+                    )
+                except ValueError as exc:
+                    yield StreamResult(text=f"{exc}\n\n{gateway_usage_markdown()}")
+                    return
+                yield StreamResult(text=render_gateway_card(gw_result))
+                return
+
+            is_loop, loop_sub, loop_ids = detect_loop_command(incoming[-1].content)
+            if is_loop:
+                if loop_sub == "tasks":
+                    yield StreamResult(text=render_tasks_card())
+                    return
+                try:
+                    loop_runs = await self.run_execution_loop(provider_name, ids=loop_ids)
+                except ValueError as exc:
+                    yield StreamResult(text=f"{exc}\n\n{loop_usage_markdown()}")
+                    return
+                yield StreamResult(text=render_loop_card(loop_runs))
                 return
 
         help_msg: Message | None = None

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import math
-
+from ..gateway.cost import estimate_tokens
 from ..providers import AIProvider, Message
 
 
@@ -36,7 +35,8 @@ class AgentProviderUtilsMixin:
 
     @staticmethod
     def _estimate_tokens_text(text: str) -> int:
-        return max(1, math.ceil(len(text) / 4))
+        # Окно контекста считаем по 4 символа на токен — исторический делитель этого проекта.
+        return max(1, estimate_tokens(text, 4))
 
     def _estimate_tokens_messages(self, messages: list[Message]) -> int:
         return sum(self._estimate_tokens_text(m.content) for m in messages)

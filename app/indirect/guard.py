@@ -53,14 +53,20 @@ def _normalize(text: str) -> str:
     return _WS_RE.sub(" ", (text or "").lower())
 
 
-def _host_of(url: str) -> str:
+def find_urls(text: str) -> list[str]:
+    """Ссылки из текста: общий детектор для проверок выхода (День 12 и шлюз Дня 13)."""
+    return [m.group(0) for m in _URL_RE.finditer(text or "")]
+
+
+def host_of(url: str) -> str:
     match = _HOST_RE.match(url.strip())
     host = match.group("host").lower() if match else ""
     return host.removeprefix("www.").split(":")[0]
 
 
-def _host_allowed(host: str) -> bool:
-    return any(host == allowed or host.endswith(f".{allowed}") for allowed in INDIRECT_ALLOWED_HOSTS)
+def host_allowed(host: str, allowed: tuple[str, ...] = INDIRECT_ALLOWED_HOSTS) -> bool:
+    """Хост в белом списке или его поддомен."""
+    return any(host == item or host.endswith(f".{item}") for item in allowed)
 
 
 def _anchors(text: str) -> list[tuple[str, str]]:
@@ -104,7 +110,7 @@ def validate_output(
     for kind, value in _anchors(answer):
         if _normalize(value) in visible:
             continue
-        if kind == "url" and _host_allowed(_host_of(value)):
+        if kind == "url" and host_allowed(host_of(value)):
             continue
         findings.append(
             GuardFinding(

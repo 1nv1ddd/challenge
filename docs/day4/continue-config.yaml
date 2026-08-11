@@ -1,0 +1,64 @@
+# Continue.dev — конфиг локального код-ассистента для проекта AI Chat Hub.
+# Репо-копия файла ~/.continue/config.yaml (Continue читает именно домашний путь).
+# IDE: Cursor (VS Code-family). Runtime: Ollama на http://localhost:11434.
+#
+# Установка расширения:  cursor --install-extension Continue.continue
+# Применить конфиг:      cp docs/day4/continue-config.yaml ~/.continue/config.yaml
+#                        (перезапустить Cursor, чтобы Continue перечитал конфиг)
+
+name: AI Chat Hub — Local Assistant
+version: 1.0.0
+schema: v1
+
+models:
+  # --- основной чат/правки: локальная 12B, всё офлайн ---
+  - name: Vikhr-Nemo-12B (local)
+    provider: ollama
+    model: huggingface.co/bartowski/Vikhr-Nemo-12B-Instruct-R-21-09-24-GGUF:Q4_K_M
+    roles:
+      - chat
+      - edit
+      - apply
+    defaultCompletionOptions:
+      temperature: 0.2      # код: низкая температура — меньше отсебятины
+      contextLength: 8192
+
+  # --- эмбеддинги для @codebase (локально, тот же bge-m3, что и у RAG проекта) ---
+  - name: bge-m3 (local embeddings)
+    provider: ollama
+    model: bge-m3:latest
+    roles:
+      - embed
+
+  # ПРИМЕЧАНИЕ про autocomplete (inline-подсказки во время набора):
+  # Vikhr-Nemo — обычная instruct-модель без FIM (fill-in-the-middle), для tab-автокомплита
+  # она непригодна. Для этой роли нужна отдельная FIM-модель, напр.:
+  #   ollama pull qwen2.5-coder:7b-base   → добавить сюда с role: autocomplete
+  # Пока автокомплит намеренно не включён (см. docs/day4/recommendation.md).
+
+# Правила проекта попадают в СИСТЕМНЫЙ ПРОМПТ каждого запроса ассистента.
+# Полный текст — docs/day4/rules-local.md; здесь его рабочая копия (короткая версия под 12B).
+rules:
+  - |
+    Ты дописываешь код в существующий проект: Python 3.12 + FastAPI + Uvicorn.
+    Пиши так, будто продолжаешь соседний файл, а не создаёшь проект с нуля.
+
+    ДЕЛАЙ ВСЕГДА:
+    1. Сначала ищи готовое. Перед новой функцией проверь, нет ли похожей в модуле —
+       переиспользуй её, не дублируй. Нужно подмножество полей — вызови существующую
+       функцию и спроецируй результат в обработчике.
+    2. Первая строка модуля после докстринга — `from __future__ import annotations`.
+    3. Однострочный docstring на русском в начале модуля.
+    4. Type-hints: `str | None`, `list[dict]`. Аннотируй тип возврата.
+    5. FastAPI: async def; ошибки — raise HTTPException(status_code=..., detail="русский текст").
+    6. Доступ к БД планировщика — только через функции app/scheduler_store.py.
+       Никакого sqlite3.connect() прямо в роутере.
+    7. SQL — только параметризованный (?). Никаких f-string в запросах.
+
+    НЕ ДЕЛАЙ:
+    - Не дублируй существующую функцию.
+    - Не пиши голый except: / except Exception без нужды — лови конкретный тип.
+    - Не ставь print() в коде приложения.
+    - Не пиши Any, если тип можно уточнить.
+
+    ФОРМАТ: верни один код-блок с готовым файлом/патчем, без рассуждений до и после.

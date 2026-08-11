@@ -46,6 +46,13 @@
 | `GET` | `/api/redteam/corpus` | Корпус инъекций с классификацией: вектор, техника, цель, источник и разбор «почему работает / как защититься» |
 | `POST` | `/api/indirect` | Прогон ловушек непрямой инъекции по наборам слоёв защиты (Day 12). Body: опционально `presets` (`none` / `sanitize` / `boundary` / `guard` / `all`), `ids`, `scenario` (`summarize` / `analyze` / `search`), `source` (`email` / `document` / `webpage`), `hiding`, `model`, `provider`, `temperature`. Ответ: `runs` (по пресету: `injected`, `blocked`, `broke_usefulness`, результаты с находками guard) и `effect` (`fixed` / `still_injected` / `usefulness_lost`) |
 | `GET` | `/api/indirect/corpus` | Корпус ловушек: носитель, техника сокрытия, сценарий агента, длина документа против видимой части и разбор каждой |
+| `POST` | `/api/gateway/chat` | Прокси между пользователем и моделью с input/output guard (Day 13). Body: `prompt` (или `messages`), опционально `mode` (`hybrid` / `mask` / `block` / `off`), `model`, `provider`, `temperature`. Ответ: `status`, `answer`, `input` (находки и что ушло в модель), `output`, `rate`, `usage` с ценой. `400` — блокировка на входе, `429` — rate limit |
+| `GET` | `/api/gateway/audit` | Последние записи аудита (`limit`) и сводка: статусы, перехваченные секреты по видам, токены, стоимость |
+| `GET` | `/api/gateway/cases` | Корпус тест-кейсов шлюза и его офлайн-прогон по детекторам: что поймали, что пропустили |
+| `GET` | `/api/gateway/config` | Режимы guard, лимиты, виды секретов и плейсхолдеры маскирования |
+| `POST` | `/api/loop/run` | Execution loop с security step (Day 14): генерация → синтаксис и тесты в песочнице → security review вторым вызовом LLM → «коммит». Body: опционально `ids`, `gen_model`, `review_model`, `max_attempts`, `provider`. Ответ: `runs` (попытки, находки ревью, события шлюза, артефакт) и `summary` (что поймал security step, что шлюз, что прошло мимо обоих). Все вызовы модели идут через `/api/gateway` |
+| `GET` | `/api/loop/tasks` | Корпус задач цикла: промпт, функциональные тесты и ловушки, которые задача провоцирует |
+| `GET` | `/api/loop/config` | Модели этапов, лимит попыток, порог эскалации, уровни находок и правила security-промпта |
 
 ## Планировщик и MCP
 

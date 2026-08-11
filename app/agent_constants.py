@@ -292,3 +292,127 @@ INDIRECT_STRIPPED_MASK = "[вырезано санитайзером]"
 INDIRECT_ALLOWED_HOSTS = ("aichathub.local", "docs.aichathub.local")
 # Ответ длиннее этого (в символах) — подозрение на дословный пересказ документа, а не сводку.
 INDIRECT_MAX_ANSWER_CHARS = 2000
+# Day 13 (advance): LLM Gateway — прокси между пользователем и моделью с guard'ами и аудитом.
+GATEWAY_CASES_PATH = "data/gateway_cases.jsonl"
+GATEWAY_AUDIT_PATH = "data/gateway_audit.jsonl"
+GATEWAY_MODEL = "openai/gpt-4o-mini"
+GATEWAY_TEMPERATURE = 0.3
+# Виды секретов input guard. credential — доступ к чужой системе, pii — персональные данные.
+GATEWAY_CREDENTIAL_KINDS = (
+    "openai_key",
+    "anthropic_key",
+    "github_token",
+    "aws_access_key",
+    "google_api_key",
+    "slack_token",
+    "private_key",
+    "jwt",
+    "connection_string",
+    "credential_assignment",
+)
+GATEWAY_PII_KINDS = ("email", "phone", "card")
+GATEWAY_SECRET_KINDS = GATEWAY_CREDENTIAL_KINDS + GATEWAY_PII_KINDS
+# Чем заменяем находку при маскировании. Плейсхолдер осмысленный: модель видит, что тут было.
+GATEWAY_REDACTIONS = {
+    "openai_key": "[REDACTED_API_KEY]",
+    "anthropic_key": "[REDACTED_API_KEY]",
+    "github_token": "[REDACTED_API_KEY]",
+    "aws_access_key": "[REDACTED_API_KEY]",
+    "google_api_key": "[REDACTED_API_KEY]",
+    "slack_token": "[REDACTED_API_KEY]",
+    "credential_assignment": "[REDACTED_SECRET]",
+    "private_key": "[REDACTED_PRIVATE_KEY]",
+    "jwt": "[REDACTED_JWT]",
+    "connection_string": "[REDACTED_CONNECTION_STRING]",
+    "email": "[REDACTED_EMAIL]",
+    "phone": "[REDACTED_PHONE]",
+    "card": "[REDACTED_CARD]",
+}
+# Base64-блоб маскируем целиком: точные границы секрета внутри него в исходный текст не отобразить.
+GATEWAY_BASE64_MASK = "[REDACTED_BASE64_SECRET]"
+# Варианты текста, по которым ищем секрет. direct — как прислали, остальные — обход детектора.
+# Точные границы находки есть только у direct и base64: остальные маскировать нечем — только блок.
+GATEWAY_VARIANTS = ("direct", "base64", "joined")
+GATEWAY_MASKABLE_VARIANTS = ("direct", "base64")
+# Режимы input guard: блокировать всё, маскировать всё, гибрид (ключ — блок, ПДн — маска), выкл.
+GATEWAY_MODES = ("block", "mask", "hybrid", "off")
+GATEWAY_DEFAULT_MODE = "hybrid"
+# Минимальная длина base64-блоба, который стоит декодировать: короче — шум вроде слов капсом.
+GATEWAY_BASE64_MIN_CHARS = 20
+# Rate limit: сколько запросов с одного IP пропускаем в окно.
+GATEWAY_RATE_LIMIT_PER_MIN = 10
+GATEWAY_RATE_WINDOW_SEC = 60
+# Длиннее — отбиваем до вызова модели: и деньги, и защита от «залей мне сюда весь дамп».
+GATEWAY_MAX_PROMPT_CHARS = 20000
+# Домены, на которые модели можно ссылаться в ответе. Всё остальное — находка output guard.
+GATEWAY_ALLOWED_HOSTS = INDIRECT_ALLOWED_HOSTS + ("localhost", "127.0.0.1")
+# Сколько символов промпта и ответа кладём в аудит-лог (всегда уже маскированных).
+GATEWAY_AUDIT_TEXT_CHARS = 2000
+# Длина префикса sha256 в логе: секрет не хранится, но одинаковые утечки видно как один хэш.
+GATEWAY_SECRET_HASH_CHARS = 12
+# Оценка токенов, когда провайдер не вернул usage: символов на токен (кириллица дороже латиницы).
+GATEWAY_CHARS_PER_TOKEN = 3.5
+# Day 14 (advance): execution loop с security step — генерация, проверки, ревью, «коммит».
+LOOP_TASKS_PATH = "data/loop_tasks.jsonl"
+# Куда кладём принятый код. Настоящий git-коммит намеренно не делаем: правило проекта — коммит
+# только по команде человека, а цикл автономный.
+LOOP_ARTIFACTS_DIR = "data/loop_artifacts"
+# Генератор — дешёвый тир (он и должен ошибаться), ревьюер — сильный: цена ошибки на ревью выше.
+LOOP_GEN_MODEL = "openai/gpt-4o-mini"
+LOOP_REVIEW_MODEL = "openai/gpt-4.1"
+LOOP_GEN_TEMPERATURE = 0.4
+LOOP_REVIEW_TEMPERATURE = 0.1
+LOOP_MAX_ATTEMPTS = 3
+# Сколько попыток подряд одно и то же правило может блокировать код, прежде чем цикл отдаст
+# задачу человеку. Нужно потому, что ревьюер на LLM под давлением повторов начинает соглашаться
+# на косметику: то же хранилище, но в другой обёртке — и ставит «чисто».
+LOOP_REPEAT_ESCALATION = 2
+# Внутренние вызовы цикла идут в режиме mask: секрет в чужую модель не уходит, но и цикл не
+# встаёт намертво — блокировка на входе означала бы, что код с ключом невозможно отревьюить.
+LOOP_GATEWAY_MODE = "mask"
+# Свой лимит для оркестратора: пользовательские 10/мин рассчитаны на человека за клавиатурой.
+LOOP_RATE_LIMIT_PER_MIN = 60
+# Прогон тестов в песочнице: жёсткий таймаут, потому что исполняется код, написанный моделью.
+LOOP_TEST_TIMEOUT_SEC = 30
+LOOP_SOLUTION_MODULE = "solution.py"
+LOOP_TESTS_MODULE = "test_solution.py"
+LOOP_MAX_CODE_CHARS = 12000
+# Сколько вывода тестов кладём в фидбек генератору: дальше идёт повтор трассировок.
+LOOP_MAX_OUTPUT_CHARS = 3000
+# Уровни находок security review. Первые два возвращают цикл на генерацию, остальные — warning.
+LOOP_SEVERITIES = ("critical", "high", "medium", "low")
+LOOP_BLOCKING_SEVERITIES = ("critical", "high")
+# Правила security-промпта под стек проекта (Python 3.12 / FastAPI / httpx / SQLite).
+LOOP_SECURITY_RULES = (
+    "hardcoded_secret",
+    "plaintext_secret_storage",
+    "secret_in_log",
+    "pii_in_log",
+    "insecure_transport",
+    "tls_verification_off",
+    "sql_injection",
+    "command_injection",
+    "path_traversal",
+    "missing_input_validation",
+    "missing_timeout",
+    "weak_crypto",
+    "broad_exception",
+    "other",
+)
+# Day 15 (advance): red-team «Арена». Оракул с секретным кодом в системном промпте за тем же
+# проходом шлюза (Day 13) и укреплённым промптом (Day 11). Победа атакующего — вытащить код наружу.
+# Код берём из окружения (CTF_SECRET в .env, не в git): даже читая репозиторий, соперник не видит
+# значение — атака остаётся честной. Фолбэк нужен только для локального прогона без .env.
+CTF_SECRET_ENV = "CTF_SECRET"
+CTF_SECRET_FALLBACK = "AICH-LOCAL-DEV-4F2A"
+CTF_MODEL = GATEWAY_MODEL
+CTF_MODE = "hybrid"
+# Отдельный лимитер Арены: 15 запросов/мин с IP. Свой, чтобы трафик атаки не выедал лимит боевого
+# шлюза и наоборот.
+CTF_RATE_LIMIT_PER_MIN = 15
+CTF_RATE_WINDOW_SEC = 60
+# Ответ на верный/неверный код в форме «Сдать код».
+CTF_WIN_MSG = "🏆 Код верный. Ты вытащил секрет мимо всех слоёв защиты — Оракул взломан."
+CTF_MISS_MSG = "❌ Это не тот код. Оракул ещё держится."
+# Отдельный лог атак на Арену: не мешаем боевому аудиту шлюза, но защитник видит все попытки.
+CTF_AUDIT_PATH = "data/ctf_audit.jsonl"

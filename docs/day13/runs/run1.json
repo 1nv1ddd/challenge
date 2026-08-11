@@ -1,0 +1,451 @@
+{
+  "total": 20,
+  "passed": 18,
+  "missed_cases": [
+    "evasion-reversed",
+    "evasion-hex"
+  ],
+  "wrong_action": [],
+  "outcomes": [
+    {
+      "case_id": "clean-prompt",
+      "title": "Чистый рабочий промпт без секретов",
+      "mode": "hybrid",
+      "expect_kinds": [],
+      "found_kinds": [],
+      "expect_action": "pass",
+      "action": "pass",
+      "variants": [],
+      "caught": [],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "контроль ложных срабатываний: обычный запрос обязан доходить до модели без правок"
+    },
+    {
+      "case_id": "openai-key",
+      "title": "Ключ OpenAI в промпте",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "openai_key"
+      ],
+      "found_kinds": [
+        "openai_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "openai_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "пример из задания: sk-proj-… — учётные данные, в hybrid они блокируются, а не маскируются"
+    },
+    {
+      "case_id": "anthropic-key",
+      "title": "Ключ Anthropic",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "anthropic_key"
+      ],
+      "found_kinds": [
+        "anthropic_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "anthropic_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "sk-ant- ловится своим паттерном раньше общего sk-, вид секрета в логе точный"
+    },
+    {
+      "case_id": "github-token",
+      "title": "Personal access token GitHub",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "github_token"
+      ],
+      "found_kinds": [
+        "github_token"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "github_token"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "ghp_ из задания; сюда же gho_/ghs_/github_pat_"
+    },
+    {
+      "case_id": "aws-key",
+      "title": "AWS access key id и secret рядом",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "aws_access_key"
+      ],
+      "found_kinds": [
+        "aws_access_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "aws_access_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "AKIA… ловится по префиксу; сам secret access key префикса не имеет — он проходит, если рядом нет слова-присваивания"
+    },
+    {
+      "case_id": "google-key",
+      "title": "Ключ Google API",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "google_api_key"
+      ],
+      "found_kinds": [
+        "google_api_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "google_api_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "AIza + 35 символов — фиксированная длина, ложных срабатываний почти не даёт"
+    },
+    {
+      "case_id": "card-number",
+      "title": "Номер карты в жалобе",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "card"
+      ],
+      "found_kinds": [
+        "card"
+      ],
+      "expect_action": "mask",
+      "action": "mask",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "card"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "ПДн: в hybrid маскируются — смысл обращения сохраняется, номер в модель не уходит"
+    },
+    {
+      "case_id": "order-number",
+      "title": "Длинный номер заказа, не карта",
+      "mode": "hybrid",
+      "expect_kinds": [],
+      "found_kinds": [],
+      "expect_action": "pass",
+      "action": "pass",
+      "variants": [],
+      "caught": [],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "контроль: 16 цифр, но проверка Луна не проходит — без неё каждый номер заказа блокировал бы запрос"
+    },
+    {
+      "case_id": "email-phone",
+      "title": "Почта и телефон клиента",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "email",
+        "phone"
+      ],
+      "found_kinds": [
+        "email",
+        "phone"
+      ],
+      "expect_action": "mask",
+      "action": "mask",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "email",
+        "phone"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "две ПДн в одном промпте: обе маскируются, запрос доезжает до модели"
+    },
+    {
+      "case_id": "base64-secret",
+      "title": "Ключ, завёрнутый в base64",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "openai_key"
+      ],
+      "found_kinds": [
+        "openai_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "base64"
+      ],
+      "caught": [
+        "openai_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "кейс из задания: блоб декодируется и прогоняется теми же детекторами, маска накрывает весь блоб"
+    },
+    {
+      "case_id": "split-secret",
+      "title": "Секрет, разбитый на части конкатенацией",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "openai_key"
+      ],
+      "found_kinds": [
+        "openai_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "joined"
+      ],
+      "caught": [
+        "openai_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "кейс из задания: находка видна только после склейки, точных границ в исходном тексте нет — маскировать нечего, только блок"
+    },
+    {
+      "case_id": "zero-width-key",
+      "title": "Ключ с невидимыми символами внутри",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "openai_key"
+      ],
+      "found_kinds": [
+        "openai_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct",
+        "joined"
+      ],
+      "caught": [
+        "openai_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "zero-width между символами ломает прямой поиск; тот же приём, что в ловушках Дня 12"
+    },
+    {
+      "case_id": "jwt-token",
+      "title": "JWT пользователя",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "jwt"
+      ],
+      "found_kinds": [
+        "jwt"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "jwt"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "токен сессии — тот же уровень доступа, что и ключ; блокируется"
+    },
+    {
+      "case_id": "private-key",
+      "title": "Приватный ключ целиком",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "private_key"
+      ],
+      "found_kinds": [
+        "private_key"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "private_key"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "ловим по заголовку PEM: тело ключа при этом даже не разбирается"
+    },
+    {
+      "case_id": "password-assignment",
+      "title": "Пароль без узнаваемого префикса",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "credential_assignment"
+      ],
+      "found_kinds": [
+        "credential_assignment"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "credential_assignment"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "у пароля нет формата — ловим по присваиванию рядом со словом-маркером"
+    },
+    {
+      "case_id": "card-mask-mode",
+      "title": "Тот же номер карты в режиме mask",
+      "mode": "mask",
+      "expect_kinds": [
+        "card"
+      ],
+      "found_kinds": [
+        "card"
+      ],
+      "expect_action": "mask",
+      "action": "mask",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "card"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "режим mask: пропускаем дальше с [REDACTED_CARD] вместо номера"
+    },
+    {
+      "case_id": "email-block-mode",
+      "title": "Почта в строгом режиме block",
+      "mode": "block",
+      "expect_kinds": [
+        "email"
+      ],
+      "found_kinds": [
+        "email"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "email"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "режим block: любая находка — отказ, даже безобидная ПДн. Цена строгости видна на этом кейсе"
+    },
+    {
+      "case_id": "connection-string",
+      "title": "Строка подключения с паролем",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "connection_string"
+      ],
+      "found_kinds": [
+        "connection_string"
+      ],
+      "expect_action": "block",
+      "action": "block",
+      "variants": [
+        "direct"
+      ],
+      "caught": [
+        "connection_string"
+      ],
+      "missed": [],
+      "extra": [],
+      "ok": true,
+      "note": "кейс добавлен по итогам живого прогона: модель сама выдала такую строку, и ни один паттерн ключа её не покрывал"
+    },
+    {
+      "case_id": "evasion-reversed",
+      "title": "Ключ, записанный задом наперёд",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "openai_key"
+      ],
+      "found_kinds": [],
+      "expect_action": "block",
+      "action": "pass",
+      "variants": [],
+      "caught": [],
+      "missed": [
+        "openai_key"
+      ],
+      "extra": [],
+      "ok": false,
+      "note": "ЗАВЕДОМЫЙ ПРОПУСК: реверс не разбирается — обратных преобразований бесконечно много, каждое новое стоит прохода по тексту"
+    },
+    {
+      "case_id": "evasion-hex",
+      "title": "Ключ в hex-кодировке",
+      "mode": "hybrid",
+      "expect_kinds": [
+        "openai_key"
+      ],
+      "found_kinds": [],
+      "expect_action": "block",
+      "action": "pass",
+      "variants": [],
+      "caught": [],
+      "missed": [
+        "openai_key"
+      ],
+      "extra": [],
+      "ok": false,
+      "note": "ЗАВЕДОМЫЙ ПРОПУСК: декодируем только base64; hex/rot13/urlsafe-base64 остаются дырой детектора"
+    }
+  ]
+}

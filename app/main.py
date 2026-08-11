@@ -6,7 +6,10 @@ from fastapi.staticfiles import StaticFiles
 from .bootstrap import STATIC_DIR
 from .lifespan import lifespan
 from .mcp_panel import router as mcp_router
+from .routers.arena import router as arena_router
+from .routers.gateway import router as gateway_router
 from .routers.hub import router as hub_router
+from .routers.loop import router as loop_router
 from .routers.indirect import router as indirect_router
 from .routers.intake import router as intake_router
 from .routers.micro import router as intent_router
@@ -24,6 +27,9 @@ app.include_router(intake_router)
 app.include_router(intent_router)
 app.include_router(redteam_router)
 app.include_router(indirect_router)
+app.include_router(gateway_router)
+app.include_router(loop_router)
+app.include_router(arena_router)
 app.include_router(hub_router)
 
 if STATIC_DIR.exists():

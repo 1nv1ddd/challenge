@@ -6,6 +6,8 @@ from ..providers import AIProvider
 
 from .context import AgentContextMixin
 from .facts_wm import AgentFactsMixin
+from .gateway import AgentGatewayMixin
+from .loop import AgentLoopMixin
 from .intake import AgentIntakeMixin
 from .intent import AgentIntentMixin
 from .memory_branches import AgentMemoryBranchesMixin
@@ -29,6 +31,8 @@ class SimpleChatAgent(
     AgentIntentMixin,
     AgentSecurityMixin,
     AgentIndirectMixin,
+    AgentGatewayMixin,
+    AgentLoopMixin,
     AgentContextMixin,
     AgentRagMixin,
     AgentPromptsMixin,

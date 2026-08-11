@@ -8,7 +8,10 @@ data/mcp_scheduler.sqlite
 data/tech_radar_outputs/*
 !data/tech_radar_outputs/.gitkeep
 data/rag_index/
+data/gateway_audit.jsonl
+data/ctf_audit.jsonl
 data/micro_cache/
 CLAUDE.md
 .claude/
 .playwright-mcp/
+data/loop_artifacts/
